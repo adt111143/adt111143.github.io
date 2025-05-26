@@ -1,0 +1,124 @@
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #FA6A6A;/*#222;*/
+  font-family: sans-serif;
+  color: white;
+  /*
+  background-image: url('images/bg.png');
+  background-repeat: no-repeat;
+  background-position: center center;
+  background-size: cover;
+  background-attachment: fixed;*/
+}
+
+.container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  text-align: center;
+  overflow: hidden;
+}
+
+.card {
+  width: 200px;
+  height: 280px;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%); /* 🎯 絕對居中 */
+  background: url('images/card-back.png') center/cover;
+  border-radius: 10px;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.799);
+  transition: all 0.5s ease-in-out;
+  z-index: 1;
+}
+
+.shuffle-card {
+  position: absolute;
+  width: 200px;
+  height: 300px;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.799);
+  z-index: 2;
+}
+
+.radiate {
+  position: fixed;
+  width: 120vw;
+  height: 120vw;
+  border-radius: 50%;
+  animation: rotate360 4s linear infinite;
+  display: none;
+  pointer-events: none;
+  background: repeating-conic-gradient(
+      #FFD200 0,
+      #FFD200 10deg,
+      rgba(255, 255, 255, 0) 10deg,
+      rgba(255, 255, 255, 0) 20deg
+  );
+  -webkit-mask-image: radial-gradient(circle, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 100%);
+  mask-image: radial-gradient(circle, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 100%);
+  opacity: 1;
+  transition: opacity 2s ease;
+}
+
+@keyframes rotate360 {
+  from {
+      transform: rotate(0deg);
+  }
+  to {
+      transform: rotate(360deg);
+  }
+}
+
+.blocker {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 9999;
+  background: transparent;
+  pointer-events: none;
+}
+.blocker.active {
+  pointer-events: all;
+}
+
+.cover-card {
+  position: absolute;
+  width: 200px;
+  height: 280px;
+  border-radius: 10px;
+  background-image: url('images/card-back.png');
+  background-size: cover;
+  background-position: center;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  z-index: 10;
+  transition: transform 0.5s ease, opacity 0.5s ease;
+  pointer-events: none;
+}
+.cover-card.show {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
