@@ -1,4 +1,4 @@
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxJoy_qSjMY5e1I26ZbJmkSY_Fz42Jdq4k54GURWX7-25cGdTmFlh9r9hU895M_j1zM/exec';
+const GAS_URL = 'https://script.google.com/a/macros/gm.ntcu.edu.tw/s/AKfycbxJoy_qSjMY5e1I26ZbJmkSY_Fz42Jdq4k54GURWX7-25cGdTmFlh9r9hU895M_j1zM/exec';
 
 async function gasFetch(action, payload = {}, signal = null) {
     const options = {
@@ -13,60 +13,48 @@ async function gasFetch(action, payload = {}, signal = null) {
 
 let activePreloadPromise = null;
 let historyData = [];
-// ✨ 儲存目前篩選後的列表，供前後翻頁使用
 let filteredData = []; 
 let currentViewedWord = null; 
 let currentFilterValue = 'all';
 
-// ✨ 新增：鎖定翻頁目標與顯示序號，確保更改狀態時畫面不亂跳
 let lockedPrevWord = null;
 let lockedNextWord = null;
 let lockedDisplayIndex = 0;
 let lockedDisplayTotal = 0;
 
-// ✨ 新增：快取與虛擬滾動參數
 let wordDetailsCache = {};
-let cacheQueue = [];           // ✨ 追蹤快取的讀取順序 (LRU機制)
-const MAX_CACHE_SIZE = 60;     // ✨ 限制最大快取數量，超過就丟棄最舊的，避免吃光記憶體
-const ITEM_HEIGHT = 54;   // 側邊欄卡片固定高度
-const VISIBLE_COUNT = 15; // 虛擬滾動可見數量
+let cacheQueue = [];           
+const MAX_CACHE_SIZE = 60;     
+const ITEM_HEIGHT = 54;   
+const VISIBLE_COUNT = 15; 
 
 const pendingRequests = {
     sentences: new Set(),
     forms: new Set()
 };
 
-let currentSortMode = 'alpha'; // 預設字母排序
-// 定義熟練度權重 (用於排序: New -> Learning -> Mastered)
+let currentSortMode = 'alpha'; 
 const statusWeight = { 'new': 1, 'learning': 2, 'mastered': 3 };
 
-// ✨ 新增：發音中斷追蹤變數 (時間戳記)
 let currentAudioSession = 0;
-// ✨ 新增：用來取消過期請求的控制器 (解決快速翻頁塞車)
 let currentDetailFetchController = null;
 
-// ✨ 新增：發音與暫停的非同步工具
 const delay = ms => new Promise(res => setTimeout(res, ms));
-// ✨ 加入 isFromLoop 參數往下傳遞
-// ✨ 修正：加入 forcedVoice 參數，允許強制指定發音人物
+
 function playAudioAsync(text, isFromLoop = false, forcedVoice = null) { 
     return new Promise(resolve => {
         playAudio(text, resolve, isFromLoop, forcedVoice); 
     });
 }
 
-// 通用模態框控制函式
 let confirmCallback = null; 
 let timerInterval = null;
 
-// ✨ 新增：只從伺服器抓取「標籤鎖定狀態」
 async function initLocksFromServer() {
     try {
         const data = await gasFetch('getLocks');
         if (data && Array.isArray(data.locks)) {
-            // 只覆蓋 appSettings 裡面的 lockedLevels，其他設定不動
             appSettings.lockedLevels = data.locks;
-            // 順手更新一下 localStorage 保持一致
             localStorage.setItem('appSettings', JSON.stringify(appSettings));
         }
     } catch (e) {
@@ -74,39 +62,31 @@ async function initLocksFromServer() {
     }
 }
 
-// ✨ 新增：只把「標籤鎖定狀態」存到伺服器
 function saveLocksToDB() {
     gasFetch('saveLocks', { locks: appSettings.lockedLevels || [] }).catch(e => console.error("Save locks failed", e));
 }
 
-// ✨ 修改：並行加速 + 全螢幕數字 "..." 版
 window.onload = () => {
-    // 1. 瞬間切換到儀表板，並根據目前的空資料 (historyData = []) 畫出卡片外殼
     goToDashboard();
     renderDashboard();
 
-    // 2. 瞬間把頂部四大數字改成 "..."
     const topStats = ['countTotal', 'countNew', 'countLearning', 'countMastered'];
     topStats.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.innerText = '...';
     });
 
-    // 3. ✨ 補齊：瞬間把所有卡片的大數字 (.lvl-total) 改成 "..."
     document.querySelectorAll('.lvl-total').forEach(el => {
         el.innerText = '...';
     });
 
-    // 4. ✨ 補齊：瞬間把卡片內的小數字 (.lvl-det-item) 也改成 "..."
     document.querySelectorAll('.lvl-det-item').forEach(el => {
-        // 為了保留圓點 (dot-sm)，我們只替換文字節點部分
         const dot = el.querySelector('.dot-sm');
-        el.innerHTML = ''; // 先清空
-        if (dot) el.appendChild(dot); // 塞回圓點
-        el.appendChild(document.createTextNode('...')); // 加上 ...
+        el.innerHTML = ''; 
+        if (dot) el.appendChild(dot); 
+        el.appendChild(document.createTextNode('...')); 
     });
 
-    // 5. 🚀 背景並行發射請求 (拿鎖定狀態 + 拿單字摘要)
     Promise.all([
         initLocksFromServer(), 
         gasFetch('getSummary')
@@ -119,12 +99,10 @@ window.onload = () => {
             historyData = rawSummary; 
             applySort();       
             filterHistory();
-            // 數據到齊，再次呼叫 renderDashboard，真實數字會瞬間覆蓋掉所有的 "..."
             renderDashboard(); 
         }
     }).catch(err => console.error("初始化資料失敗:", err));
 
-    // --- 剩下的 UI 初始化 (維持原樣) ---
     initCustomSelect();
     updateSelectLockUI();
     initAccentSelect();
@@ -169,21 +147,15 @@ function initGlobalFocus() {
 
         if (e.ctrlKey || e.altKey || e.metaKey) return;
 
-        // 排除 Enter, Esc, F1-F12, ArrowUp 等功能鍵
-        // e.key.length === 1 代表是可列印字元
         if (e.key.length === 1) {
             const mainInput = document.getElementById('wordInput');
-            
             if (mainInput) {
                 mainInput.focus();
-                // 注意：這裡不加 e.preventDefault()
-                // 這樣使用者按下的「第一個字母」才會直接輸入進去，不會被吃掉
             }
         }
     });
 }
 
-// 初始化自訂下拉選單
 function initCustomSelect() {
     const wrapper = document.querySelector('.custom-select-wrapper');
     const trigger = wrapper.querySelector('.custom-select-trigger');
@@ -208,31 +180,25 @@ function initCustomSelect() {
             currentFilterValue = value; 
             wrapper.classList.remove('open');
             
-            // 檢查排序按鈕的互斥邏輯
             updateSortButtonsVisibility(value);
             updateSelectLockUI();
-
             filterHistory();
             
             const cardArea = document.getElementById('cardArea');
             const isCardViewActive = cardArea && cardArea.style.display !== 'none';
 
             if (filteredData.length > 0) {
-                // ✨ 智慧判定：目前的單字是否還存在於新的篩選清單中？
                 const stillExists = currentViewedWord && filteredData.some(item => item.word === currentViewedWord);
 
                 if (isCardViewActive && stillExists) {
                     recalculateNavigationLock();
-                    // 單字還在名單內 -> 留在原地，只更新序號、翻頁按鈕與側邊欄捲動
                     updateCurrentIndexDisplay(currentViewedWord);
                     if (typeof updateCardNavigation === 'function') updateCardNavigation(currentViewedWord);
                     scrollToActiveItem();
                 } else {
-                    // 不在單字卡畫面，或是單字已被過濾掉 -> 強制跳到新名單的第一個單字
                     clickHistoryItem(filteredData[0].word);
                 }
             } else {
-                // 如果篩選後沒有任何單字，直接回到主頁面
                 goToDashboard();
             }
         });
@@ -248,31 +214,24 @@ function updateSortButtonsVisibility(filterValue) {
     const btnStatus = document.querySelector('.sort-btn[data-sort="status"]');
     const btnLevel = document.querySelector('.sort-btn[data-sort="level"]');
 
-    // 1. 先全部顯示
     btnAlpha.classList.remove('hidden');
     btnStatus.classList.remove('hidden');
     btnLevel.classList.remove('hidden');
 
     let modeChanged = false;
 
-    // 2. 判斷邏輯
     if (filterValue === 'all') {
-        // 全顯示
     } 
     else if (filterValue.startsWith('lvl-')) {
-        // 篩選 Level 時，隱藏 Level 排序 (因為全部都是同一個 Level，排序無意義)
         btnLevel.classList.add('hidden');
         if (currentSortMode === 'level') {
             changeSort('alpha'); 
             modeChanged = true;
         }
     } 
-    // ✨ 新增：如果是考試篩選 (exam-)，保留所有排序按鈕
     else if (filterValue.startsWith('exam-')) {
-        // 不做任何隱藏，因為在 TOEIC 類別下，使用者可能還想依照 Status 或 Level 排序
     }
     else {
-        // 剩下的就是 Status 篩選，隱藏 Status 排序
         btnStatus.classList.add('hidden');
         if (currentSortMode === 'status') {
             changeSort('alpha');
@@ -291,7 +250,6 @@ function toggleSidebar() {
 
 function handleEnter(e) { if(e.key === 'Enter') startLookup(); }
 
-// 回到儀表板
 function goToDashboard() {
     const dashboard = document.getElementById('dashboard');
     const cardArea = document.getElementById('cardArea');
@@ -316,7 +274,6 @@ function goToDashboard() {
     renderDashboard();
 }
 
-// ✨ 加入 autoFocus 參數，預設為 false
 function toggleLoading(isLoading, autoFocus = false) {
     const loader = document.getElementById('loader');
     const mask = document.getElementById('pageMask');
@@ -326,12 +283,11 @@ function toggleLoading(isLoading, autoFocus = false) {
     if (isLoading) {
         if (mask) mask.classList.add('active');
         if (loader) loader.style.display = 'flex'; 
-        // 修正：只有在手機版時才自動收合側邊欄
         if (sidebar && window.innerWidth <= 900) sidebar.classList.add('closed');
         
         if (input) {
             input.disabled = true; 
-            input.blur(); // 確保移出焦點
+            input.blur(); 
         }
     } else {
         if (mask) mask.classList.remove('active');
@@ -339,7 +295,6 @@ function toggleLoading(isLoading, autoFocus = false) {
         
         if (input) {
             input.disabled = false;
-            // ✨ 修正：依照參數決定是否自動聚焦回搜尋框
             if (autoFocus) {
                 input.focus(); 
             }
@@ -354,7 +309,7 @@ async function startLookup(wordToSearch = null, checkHistory = true) {
     if (!word) return;
 
     const isReadonly = document.body.classList.contains('hide-card-actions');
-    const existsInHistory = historyData.some(item => item.word.toLowerCase() === word.toLowerCase());
+    const existsInHistory = historyData.some(item => (item.word || '').toLowerCase() === word.toLowerCase());
 
     if (isReadonly && !existsInHistory) {
         showConfirmModal(
@@ -367,9 +322,9 @@ async function startLookup(wordToSearch = null, checkHistory = true) {
             false, 
             false
         );
-        if (!wordToSearch) input.value = ''; // 清空輸入框
-        input.blur();                      // 收起手機鍵盤
-        return;                            // 🚀 直接終止，不觸發載入動畫，也不發送 API
+        if (!wordToSearch) input.value = ''; 
+        input.blur();                      
+        return;                            
     }
 
     document.getElementById('dashboard').style.display = 'none';
@@ -380,10 +335,9 @@ async function startLookup(wordToSearch = null, checkHistory = true) {
     try {
         const data = await gasFetch('lookup', { word: word, checkHistory: checkHistory });
         
-        // 🚨 終極修正：攔截「所有」後端傳來的錯誤，不只是 'not_found'
+        // 🚨 終極攔截：只要後端回報錯誤，絕對不放行給 renderCard
         if (data.error) {
             goToDashboard();
-            
             if (data.error === 'not_found') {
                 showConfirmModal(
                     'No such word found.', 
@@ -392,20 +346,17 @@ async function startLookup(wordToSearch = null, checkHistory = true) {
                         input.focus();
                         input.select();
                     },
-                    false, 
-                    false
+                    false, false
                 );
             } else {
-                // 如果是 AI 格式錯誤或其他意外錯誤，顯示這個警告
                 showConfirmModal(
-                    '系統錯誤', 
-                    `AI 處理失敗或格式錯誤：<br>${data.error}`, 
+                    '系統處理錯誤', 
+                    `伺服器或 AI 發生錯誤：<br>${data.error}`, 
                     () => {
                         input.focus();
                         input.select();
                     },
-                    true, 
-                    false
+                    true, false
                 );
             }
             return; 
@@ -414,17 +365,13 @@ async function startLookup(wordToSearch = null, checkHistory = true) {
         await loadHistory(); 
         
         wordDetailsCache[data.word] = data;
-
-        // ✨ 搜尋到的字也要加入快取管理並觸發預載
         manageCacheLRU(data.word);
 
         renderCard(data);
         if (!wordToSearch) input.value = '';
 
-        // ✨ 觸發預載相鄰單字
         setTimeout(() => preloadAdjacentWords(data.word), 500);
 
-        // 🚀 漸進式載入 1：單字卡出來後，立刻在背景呼叫例句 API
         if (!data.tense_sentences || data.tense_sentences.length === 0) {
             regenerateSentences(data.word);
         }
@@ -432,25 +379,17 @@ async function startLookup(wordToSearch = null, checkHistory = true) {
     } catch (err) {
         console.error(err);
         goToDashboard();
-        showConfirmModal(
-            '系統錯誤',
-            `發生預期外的錯誤：<br>${err.message}`,
-            () => {},
-            true, 
-            false 
-        );
+        showConfirmModal('系統錯誤', `發生預期外的錯誤：<br>${err.message}`, () => {}, true, false);
     } finally {
         toggleLoading(false, false);
     }
 }
 
-// 重新生成內容
 function regenerate(word) {
     showConfirmModal(
         'Regenerate Content', 
         `Are you sure you want to regenerate "<strong>${word}</strong>"?<br>The current content will be overwritten.`,
         () => {
-            // 傳入 false，代表「不要查歷史紀錄，強制問 AI」
             startLookup(word, false);
         },
         false 
@@ -499,12 +438,10 @@ function showAlertModal(title, message) {
 
     titleEl.textContent = title;
     msgEl.innerHTML = message;
-
     if (cancelBtn) cancelBtn.style.display = 'none';
 
     confirmBtn.textContent = 'OK';
     confirmBtn.classList.remove('danger'); 
-
     confirmBtn.onclick = closeModal;
     modal.classList.add('active');
 }
@@ -522,7 +459,6 @@ document.getElementById('customModal').addEventListener('click', (e) => {
     if (e.target.id === 'customModal') closeModal();
 });
 
-// 刪除單字
 async function deleteWord(word) {
     showConfirmModal(
         'Delete Word',
@@ -533,7 +469,6 @@ async function deleteWord(word) {
 
                 if (data.success) {
                     historyData = historyData.filter(item => item.word !== word);
-                    // ✨ 清除記憶體快取
                     delete wordDetailsCache[word]; 
                     
                     filterHistory(); 
@@ -550,7 +485,6 @@ async function deleteWord(word) {
     );
 }
 
-// 切換排序模式
 function changeSort(mode) {
     currentSortMode = mode;
     
@@ -563,18 +497,16 @@ function changeSort(mode) {
     
     if (currentViewedWord) {
         recalculateNavigationLock();
-        // ✨ 新增這行：排序模式改變時，左右按鈕也要跟著瞬間更新
         updateCurrentIndexDisplay(currentViewedWord);
         updateCardNavigation(currentViewedWord); 
         setTimeout(() => scrollToActiveItem(), 50);
     }
 }
 
-// 執行排序
 function applySort() {
     historyData.sort((a, b) => {
-        const wordA = a.word.toLowerCase();
-        const wordB = b.word.toLowerCase();
+        const wordA = (a.word || '').toLowerCase();
+        const wordB = (b.word || '').toLowerCase();
         
         const statA = (a.stats && a.stats.status) ? statusWeight[a.stats.status] : 0;
         const statB = (b.stats && b.stats.status) ? statusWeight[b.stats.status] : 0;
@@ -583,38 +515,22 @@ function applySort() {
         const lvlB = (b.stats && typeof b.stats.level === 'number') ? b.stats.level : -1;
 
         if (currentSortMode === 'level') {
-            // ✨ 建立專屬的「多階層權重計算器」
             const getLevelRank = (item, lvl) => {
                 const tag = item.exam_tag || 'Level';
-                
-                // 階層 1：有 Level 標籤且有數字 (0~6) 最優先
                 if (tag === 'Level' && lvl >= 0) return lvl; 
                 
-                // 階層 2：各類考試與補充標籤，依序給予大於 6 的權重
                 const tagRankMap = {
-                    'TOEIC': 10,
-                    'IELTS': 11,
-                    'GMAT': 12,
-                    'TOEFL': 13,
-                    'Extra': 14,
-                    'Phrase': 15
+                    'TOEIC': 10, 'IELTS': 11, 'GMAT': 12, 'TOEFL': 13, 'Extra': 14, 'Phrase': 15
                 };
                 if (tag !== 'Level' && tagRankMap[tag]) return tagRankMap[tag];
-                
-                // 階層 3：雖然是 Level 標籤，但沒選數字 (Unset)，給予極大值墊底
                 return 99; 
             };
 
             const rankA = getLevelRank(a, lvlA);
             const rankB = getLevelRank(b, lvlB);
 
-            // 1. 優先比對我們設定的權重 (Level 0-6 -> Tags -> Unset)
             if (rankA !== rankB) return rankA - rankB; 
-            
-            // 2. 如果權重相同 (例如都是 TOEIC，或都是 LV.3)，再比對 Status 熟練度
             if (statA !== statB) return statA - statB; 
-            
-            // 3. 最後依字母 A-Z 排列
             return wordA.localeCompare(wordB);         
         } 
         else if (currentSortMode === 'status') {
@@ -622,7 +538,7 @@ function applySort() {
             if (lvlA !== lvlB) return lvlA - lvlB;
             return wordA.localeCompare(wordB);
         } 
-        else { // default: 'alpha'
+        else { 
             const wordCompare = wordA.localeCompare(wordB);
             if (wordCompare !== 0) return wordCompare;
             if (statA !== statB) return statA - statB;
@@ -645,42 +561,29 @@ async function loadHistory() {
             applySort();       
             filterHistory();
             renderDashboard();
-        } else {
-            console.error("API 回傳的格式不正確，預期是陣列，卻收到:", raw);
         }
     } catch (err) { 
-        console.error("取得歷史紀錄失敗 (可能是網路或 CORS 問題):", err); 
+        console.error("取得歷史紀錄失敗", err); 
     }
 }
 
 function navigateHistory(offset) {
-    // ✨ 核心修正：改用「鎖定的單字」來翻頁，徹底無視背景排序的改變
     const targetWord = offset === 1 ? lockedNextWord : lockedPrevWord;
-    
     if (targetWord) {
         clickHistoryItem(targetWord);
     }
 }
 
-// =========================================
-// ✨ 新增：快取記憶體管理 (LRU)
-// =========================================
 function manageCacheLRU(word) {
-    // 1. 把這個單字從佇列中移除 (如果它本來就在)
     cacheQueue = cacheQueue.filter(w => w !== word);
-    // 2. 把這個單字塞到最前面代表「最新被使用」
     cacheQueue.push(word);
     
-    // 3. 如果快取數量超過上限，就無情刪除最舊的那個！
     while (cacheQueue.length > MAX_CACHE_SIZE) {
-        const oldestWord = cacheQueue.shift(); // 取出最舊的
-        delete wordDetailsCache[oldestWord];   // 從記憶體中徹底刪除
+        const oldestWord = cacheQueue.shift(); 
+        delete wordDetailsCache[oldestWord];   
     }
 }
 
-// =========================================
-// ✨ 背景無聲預載 (Batch Pre-fetching 雲端優化版)
-// =========================================
 async function preloadAdjacentWords(currentWord) {
     const currentIndex = filteredData.findIndex(item => item.word === currentWord);
     if (currentIndex === -1) return;
@@ -691,17 +594,10 @@ async function preloadAdjacentWords(currentWord) {
         if (currentIndex - i >= 0) wordsToPreload.push(filteredData[currentIndex - i].word);
     }
 
-    // 只挑出快取裡沒有的字
     const neededWords = wordsToPreload.filter(w => !wordDetailsCache[w]);
     
-    if (neededWords.length === 0) {
-        console.log("✅ 附近的單字都已在快取中，無須發送請求。");
-        return; 
-    }
+    if (neededWords.length === 0) return; 
 
-    console.log(`📦 準備向 Google 打包預載 ${neededWords.length} 個單字:`, neededWords);
-
-    // 🔥 將進度綁定在全域變數，讓點擊卡片時可以等待它
     activePreloadPromise = gasFetch('getBatchDetails', { words: neededWords })
         .then(data => {
             if (data.success && data.results) {
@@ -709,17 +605,10 @@ async function preloadAdjacentWords(currentWord) {
                     wordDetailsCache[fullData.word] = fullData;
                     manageCacheLRU(fullData.word); 
                 });
-                console.log("✅ 背景打包預載成功！已完美存入快取。");
-            } else {
-                console.error("❌ 預載失敗，Google 回傳:", data);
             }
         })
-        .catch(e => {
-            console.error("❌ 預載發生致命錯誤 (可能是網路或 CORS):", e);
-        })
-        .finally(() => {
-            activePreloadPromise = null; // 跑完清空狀態
-        });
+        .catch(e => console.error("預載發生錯誤:", e))
+        .finally(() => activePreloadPromise = null);
 }
 
 async function clickHistoryItem(word) {
@@ -730,17 +619,13 @@ async function clickHistoryItem(word) {
         currentDetailFetchController.abort(); 
     }
 
-    // 🚀 防卡頓攔截：如果快取沒有，但「背景正在幫忙拿」，就等它一下！
     if (!wordDetailsCache[word] && activePreloadPromise) {
-        console.log(`⏳ [${word}] 正在背景預載的包裹裡，等待小精靈回來...`);
         toggleLoading(true, false);
         await activePreloadPromise;
         toggleLoading(false, false);
     }
 
-    // 🚀 最終防線：如果等完了還是沒有 (代表預載失敗)，才發送單一請求
     if (!wordDetailsCache[word]) {
-        console.warn(`⚠️ [${word}] 快取依然是空的！被迫發起單一救援請求！`);
         const loaderTimer = setTimeout(() => { toggleLoading(true, false); }, 500);
 
         currentDetailFetchController = new AbortController();
@@ -773,12 +658,10 @@ async function clickHistoryItem(word) {
     
     renderCard(fullItem); 
 
-    // 觸發下一波預載
     if (typeof preloadAdjacentWords === 'function') {
         setTimeout(() => preloadAdjacentWords(word), 500);
     }
     
-    // 背景生例句
     if (!fullItem.tense_sentences || fullItem.tense_sentences.length === 0) {
         regenerateSentences(fullItem.word);
     }
@@ -789,7 +672,6 @@ async function clickHistoryItem(word) {
         if (sidebar) sidebar.classList.add('closed');
     }
 
-    // 更新瀏覽次數
     try {
         const data = await gasFetch('updateView', { word: word });
         if(data.success) {
@@ -808,7 +690,6 @@ function filterByStat(status) {
     if (sidebar) sidebar.classList.remove('closed');
 
     currentFilterValue = status;
-    
     updateSortButtonsVisibility(status);
     updateSelectLockUI();
 
@@ -828,17 +709,13 @@ function filterByStat(status) {
     const isCardViewActive = cardArea && cardArea.style.display !== 'none';
 
     if (filteredData.length > 0) {
-        // ✨ 智慧判定：目前的單字是否還存在於新的篩選清單中？
         const stillExists = currentViewedWord && filteredData.some(item => item.word === currentViewedWord);
-        
         if (isCardViewActive && stillExists) {
             recalculateNavigationLock();
-            // 單字還在名單內 -> 留在原地，只更新序號、翻頁按鈕與側邊欄捲動
             updateCurrentIndexDisplay(currentViewedWord);
             if (typeof updateCardNavigation === 'function') updateCardNavigation(currentViewedWord);
             scrollToActiveItem();
         } else {
-            // 單字已被過濾掉 -> 強制跳到新名單的第一個單字
             clickHistoryItem(filteredData[0].word);
         }
     } else {
@@ -875,17 +752,13 @@ function filterByLevel(level) {
     const isCardViewActive = cardArea && cardArea.style.display !== 'none';
 
     if (filteredData.length > 0) {
-        // ✨ 智慧判定：目前的單字是否還存在於新的篩選清單中？
         const stillExists = currentViewedWord && filteredData.some(item => item.word === currentViewedWord);
-        
         if (isCardViewActive && stillExists) {
             recalculateNavigationLock();
-            // 單字還在名單內 -> 留在原地，只更新序號、翻頁按鈕與側邊欄捲動
             updateCurrentIndexDisplay(currentViewedWord);
             if (typeof updateCardNavigation === 'function') updateCardNavigation(currentViewedWord);
             scrollToActiveItem();
         } else {
-            // 單字已被過濾掉 -> 強制跳到新名單的第一個單字
             clickHistoryItem(filteredData[0].word);
         }
     } else {
@@ -893,27 +766,20 @@ function filterByLevel(level) {
     }
 }
 
-// =========================================
-// ✨ 修正版：更新熟練度狀態 (Status)
-// =========================================
 async function updateStatus(word, newStatus) {
     const item = historyData.find(i => i.word === word);
     const cacheItem = wordDetailsCache[word];
 
-    // 🛡️ 關鍵防呆：確保 stats 物件存在
     if (item && !item.stats) item.stats = { views: 1, status: 'new', level: null, isBookmarked: false };
     if (cacheItem && !cacheItem.stats) cacheItem.stats = { views: 1, status: 'new', level: null, isBookmarked: false };
     
-    // 更新記憶體資料
     if (item) item.stats.status = newStatus;
     if (cacheItem) cacheItem.stats.status = newStatus;
     
-    // 更新畫面上的按鈕 CSS
     document.querySelectorAll('.status-btn').forEach(btn => btn.classList.remove('active'));
     const targetBtn = document.querySelector(`.status-btn.${newStatus}`);
     if (targetBtn) targetBtn.classList.add('active');
 
-    // 重新排序 -> 更新過濾 -> 更新序號 -> 更新翻頁按鈕 -> 捲動側邊欄跟隨 -> 更新儀表板數字
     applySort();
     filterHistory(); 
     updateCurrentIndexDisplay(word);
@@ -921,11 +787,8 @@ async function updateStatus(word, newStatus) {
     setTimeout(() => scrollToActiveItem(), 50);
     renderDashboard();
 
-    // 背景同步到伺服器
     try {
         const data = await gasFetch('updateStatus', { word: word, status: newStatus });
-        
-        // 確保以前端與後端最終同步為準
         if (data.success && data.stats) {
             if (item) item.stats = data.stats;
             if (cacheItem) cacheItem.stats = data.stats;
@@ -933,24 +796,18 @@ async function updateStatus(word, newStatus) {
     } catch(e) { console.error("Update status failed"); }
 }
 
-// =========================================
-// ✨ 修正版：更新等級 (Level) 與鎖定防護
-// =========================================
 async function updateLevel(word, newLevel) {
     const item = historyData.find(i => i.word === word);
     const cacheItem = wordDetailsCache[word];
 
-    // ✨ 鎖定防護區塊：定義所有需要的變數
     const currentLvl = (item && item.stats && item.stats.level !== undefined) ? item.stats.level : null;
-    const currentTag = (item && item.exam_tag) ? item.exam_tag : 'Level'; // 👈 就是之前漏了這行！
+    const currentTag = (item && item.exam_tag) ? item.exam_tag : 'Level'; 
     const lockedList = appSettings.lockedLevels || [];
     
-    // 如果原 Level 被鎖、目標 Level 被鎖、或所屬的 Tag 被鎖定，一律不准過！
     if (currentLvl !== null && lockedList.includes(currentLvl)) return; 
     if (newLevel !== 'none' && lockedList.includes(newLevel)) return;
     if (lockedList.includes(currentTag)) return;
     
-    // 🛡️ 關鍵防呆：如果 stats 物件還不存在，強制幫它初始化一個
     if (item && !item.stats) item.stats = { views: 1, status: 'new', level: null, isBookmarked: false };
     if (cacheItem && !cacheItem.stats) cacheItem.stats = { views: 1, status: 'new', level: null, isBookmarked: false };
 
@@ -958,36 +815,26 @@ async function updateLevel(word, newLevel) {
         newLevel = 'none'; 
     }
     
-    // 更新記憶體資料
     if (item) item.stats.level = (newLevel === 'none' ? null : newLevel);
     if (cacheItem) cacheItem.stats.level = (newLevel === 'none' ? null : newLevel);
     
-    // 更新畫面上的按鈕 CSS
     document.querySelectorAll('.level-btn').forEach(btn => btn.classList.remove('active'));
     if (newLevel !== 'none') {
         const targetBtn = document.querySelector(`.level-btn[data-lvl="${newLevel}"]`);
         if (targetBtn) targetBtn.classList.add('active');
     }
     
-    // 重新排序 -> 更新過濾 -> 更新序號 -> 更新翻頁按鈕 -> 捲動側邊欄跟隨
     applySort();
     filterHistory();
     
-    // ✨ 關鍵修改：等級改變時，強制打破鎖定，立刻對齊新排序的鄰居！
     recalculateNavigationLock(); 
-    
     updateCurrentIndexDisplay(word);
     updateCardNavigation(word);
     setTimeout(() => scrollToActiveItem(), 50);
-    
-    // 確保更改 Level 時，主頁面的 Dashboard 數字也能瞬間更新
     renderDashboard(); 
 
-    // 背景同步到伺服器
     try {
         const data = await gasFetch('updateLevel', { word: word, level: newLevel });
-        
-        // 確保以前端與後端最終同步為準
         if (data.success && data.stats) {
             if (item) item.stats = data.stats;
             if (cacheItem) cacheItem.stats = data.stats;
@@ -997,14 +844,12 @@ async function updateLevel(word, newLevel) {
 
 let isSecondaryDashboardView = false;
 
-// ✨ 新增：切換右側區塊視圖，左側保持不動
 function toggleDashboardView() {
     isSecondaryDashboardView = !isSecondaryDashboardView;
     document.getElementById('levelView').style.display = isSecondaryDashboardView ? 'none' : 'block';
     document.getElementById('tagsView').style.display = isSecondaryDashboardView ? 'block' : 'none';
 }
 
-// ✨ 修改：重寫 renderDashboard，移除 Level 0 與 Unset
 function renderDashboard() {
     const total = historyData.length;
     let sNew = 0, sLearning = 0, sMastered = 0;
@@ -1014,7 +859,6 @@ function renderDashboard() {
         levelStats[i] = { total: 0, new: 0, learning: 0, mastered: 0 };
     }
 
-    // ✨ 準備右側 Tags 視圖的資料結構 (只保留 6 個標籤)
     const tagStats = {
         'TOEIC': { total: 0, new: 0, learning: 0, mastered: 0, filter: 'exam-TOEIC' },
         'IELTS': { total: 0, new: 0, learning: 0, mastered: 0, filter: 'exam-IELTS' },
@@ -1033,13 +877,11 @@ function renderDashboard() {
         const lvl = (item.stats && item.stats.level !== undefined && item.stats.level !== null) ? item.stats.level : null;
         const tag = item.exam_tag || 'Level';
         
-        // 分發數據給 Level Breakdown (Level 1~6)
         if (lvl !== null && lvl >= 1 && lvl <= 6) {
             levelStats[lvl].total++;
             levelStats[lvl][st]++;
         }
 
-        // ✨ 分發數據給 Tags (只計算我們保留的這 6 個標籤)
         if (tag !== 'Level' && tagStats[tag]) {
             tagStats[tag].total++;
             tagStats[tag][st]++;
@@ -1051,7 +893,6 @@ function renderDashboard() {
     document.getElementById('countLearning').innerText = sLearning;
     document.getElementById('countMastered').innerText = sMastered;
 
-    // ✨ 建立共用的卡片生成器
     const generateCardHtml = (key, ls, lockTarget, isMainLevel) => {
         const pNew = ls.total > 0 ? (ls.new / ls.total) * 100 : 0;
         const pLearning = ls.total > 0 ? (ls.learning / ls.total) * 100 : 0;
@@ -1065,7 +906,6 @@ function renderDashboard() {
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 ${isLocked ? '10 0v4' : '9.9-1'}"></path></svg>
             </button>` : '';
 
-        // 點擊事件：Level 呼叫 filterByLevel()，Tag 呼叫 applyDashboardFilter()
         const clickAction = isMainLevel ? `filterByLevel(${lockTarget})` : `applyDashboardFilter('${ls.filter}')`;
 
         return `
@@ -1088,7 +928,6 @@ function renderDashboard() {
         </div>`;
     };
 
-    // 渲染 Level 1-6 視圖
     const levelArea = document.getElementById('levelStatsArea');
     if (levelArea) {
         let html = '';
@@ -1098,24 +937,21 @@ function renderDashboard() {
         levelArea.innerHTML = html;
     }
 
-    // ✨ 渲染 Tags 視圖 (只會渲染 6 張)
     const tagsArea = document.getElementById('tagsStatsArea');
     if (tagsArea) {
         let secHtml = '';
         for (const [key, ls] of Object.entries(tagStats)) {
-            secHtml += generateCardHtml(key, ls, key, false); // Tags 本身就當作鎖定目標
+            secHtml += generateCardHtml(key, ls, key, false); 
         }
         tagsArea.innerHTML = secHtml;
     }
 }
 
-// ✨ 新增：通用點擊卡片過濾功能 (用於 Tags)
 function applyDashboardFilter(filterValue) {
     const sidebar = document.getElementById('sidebar');
     if (sidebar) sidebar.classList.remove('closed');
 
     currentFilterValue = filterValue;
-
     updateSortButtonsVisibility(filterValue);
     updateSelectLockUI();
 
@@ -1137,7 +973,6 @@ function applyDashboardFilter(filterValue) {
 
     if (filteredData.length > 0) {
         const stillExists = currentViewedWord && filteredData.some(item => item.word === currentViewedWord);
-        
         if (isCardViewActive && stillExists) {
             recalculateNavigationLock();
             updateCurrentIndexDisplay(currentViewedWord);
@@ -1151,13 +986,13 @@ function applyDashboardFilter(filterValue) {
     }
 }
 
-// ✨ 1. 修改版的 filterHistory (只建立滾動空殼)
 function filterHistory() {
     const searchText = document.getElementById('historySearch').value.toLowerCase();
     const filterValue = currentFilterValue;
     const container = document.getElementById('historyList');
 
     const result = historyData.filter(item => {
+        // 🚨 防護
         const wordNoSpace = (item.word || '').toLowerCase().replace(/\s+/g, '');
         const matchText = wordNoSpace.includes(searchText);
         let matchFilter = true;
@@ -1182,31 +1017,25 @@ function filterHistory() {
         return;
     }
 
-    // ✨ 虛擬滾動核心：建立空殼容器，把總高度撐開
     container.innerHTML = `
         <div id="vs-spacer" style="height: ${filteredData.length * ITEM_HEIGHT}px; position: relative; width: 100%;">
             <div id="vs-content" style="position: absolute; top: 0; left: 0; width: 100%;"></div>
         </div>
     `;
     
-    // 綁定滾動事件
     container.onscroll = () => renderVirtualList();
-    renderVirtualList(); // 初次渲染
+    renderVirtualList(); 
 }
 
-// ✨ 2. 新增：只渲染可見區域的虛擬清單生成器
 function renderVirtualList() {
     const container = document.getElementById('historyList');
     const content = document.getElementById('vs-content');
     if (!content) return;
 
     const scrollTop = container.scrollTop;
-    
-    // 計算該從第幾個 index 開始畫 (加上前後幾張緩衝)
     const startIndex = Math.max(0, Math.floor(scrollTop / ITEM_HEIGHT) - 3);
     const endIndex = Math.min(filteredData.length, startIndex + VISIBLE_COUNT + 6);
 
-    // 把內容容器推到目前滾動的位置
     content.style.transform = `translateY(${startIndex * ITEM_HEIGHT}px)`;
 
     content.innerHTML = filteredData.slice(startIndex, endIndex).map(item => {
@@ -1214,26 +1043,22 @@ function renderVirtualList() {
             const status = stats.status || 'new';
             const isActive = (item.word === currentViewedWord) ? 'current-active' : '';
             
-            // ✨ 關鍵修改：同時判斷是否有 Level 或是其他 Exam Tag
             const hasLevel = stats.level !== undefined && stats.level !== null;
             const hasTag = item.exam_tag && item.exam_tag !== 'Level';
             let levelHtml = '';
             
             if (hasLevel) {
-                // 如果有 Level，優先顯示 LV.x
                 levelHtml = `<span class="sidebar-level-tag" data-lvl="${stats.level}">LV.${stats.level}</span>`;
             } else if (hasTag) {
-                // 如果沒有 Level，但有其他考試標籤 (TOEIC, Extra 等)，顯示對應標籤
                 levelHtml = `<span class="sidebar-level-tag" data-tag="${item.exam_tag}">${item.exam_tag}</span>`;
             }
 
             const isBookmarked = !!stats.isBookmarked;
             const bookmarkRibbon = isBookmarked ? `<div class="bookmark-ribbon"></div>` : '';
 
-        // ✨ 關鍵修正：將單引號進行跳脫 (Escape)，避免 HTML onClick 發生語法錯誤
-        const safeWord = item.word.replace(/'/g, "\\'");
+        // 🚨 防護
+        const safeWord = (item.word || '').replace(/'/g, "\\'");
 
-        // ✨ 1. 新增：側邊欄專屬的隱藏發音按鈕 (加入 stopPropagation 阻止事件冒泡，避免點擊時觸發卡片切換)
         const audioBtnHtml = `
             <button class="h-audio-btn" onmousedown="event.stopPropagation();" onclick="event.stopPropagation(); playAudio('${safeWord}')" title="Listen">
                 <svg height="20px" viewBox="0 -960 960 960" width="20px" fill="currentColor">
@@ -1242,7 +1067,6 @@ function renderVirtualList() {
             </button>
         `;
 
-        // ✨ 2. 將 audioBtnHtml 塞進結構裡 (放在 levelHtml 的正下方)
         return `
         <div id="history-item-${item.word}" class="history-item status-${status} ${isActive}" onclick="clickHistoryItem('${safeWord}')">
             <span class="h-word">${item.word}</span>
@@ -1253,25 +1077,21 @@ function renderVirtualList() {
     }).join('');
 }
 
-// ✨ 3. 修改：配合虛擬滾動的自動捲動邏輯
 function scrollToActiveItem() {
     if (!currentViewedWord) return;
     const index = filteredData.findIndex(i => i.word === currentViewedWord);
     
     if (index !== -1) {
         const container = document.getElementById('historyList');
-        // 計算目標捲動位置 (扣掉 2 個單字的高度當作緩衝視野)
         const targetTop = Math.max(0, (index * ITEM_HEIGHT) - (ITEM_HEIGHT * 2));
         const currentTop = container.scrollTop;
         
-        // 🚀 核心修復 2：只有在「真正需要捲動」時才呼叫 scrollTo！
         if (Math.abs(currentTop - targetTop) > 1) {
             container.scrollTo({ top: targetTop, behavior: 'smooth' });
         }
     }
 }
 
-// ✨ 修改處：RenderCard 支援 Level 0-6 按鈕 ✨
 function renderCard(data, preventAudio = false) {
     const cardArea = document.getElementById('cardArea');
     const dashboard = document.getElementById('dashboard');
@@ -1281,11 +1101,10 @@ function renderCard(data, preventAudio = false) {
     if(loader) loader.style.display = 'none';
     if(cardArea) cardArea.style.display = 'flex';
 
-    // 🚨 終極修正：防護 data.word undefined 問題
+    // 🚨 終極防護：確保 data.word 是字串
     currentViewedWord = data.word || 'Unknown';
     const safeWord = (data.word || '').replace(/'/g, "\\'");
 
-    // 🚀 核心修復 1：移除暴力的 filterHistory()，改用局部更新！
     document.querySelectorAll('.history-item').forEach(el => el.classList.remove('current-active'));
     const activeNode = document.getElementById(`history-item-${data.word}`);
     if (activeNode) activeNode.classList.add('current-active');
@@ -1300,7 +1119,6 @@ function renderCard(data, preventAudio = false) {
     
     const currentIndex = filteredData.findIndex(item => item.word === data.word);
     
-    // 🚀 核心鎖定機制：在這裡「鎖定」上一張與下一張單字
     lockedPrevWord = currentIndex > 0 ? filteredData[currentIndex - 1].word : null;
     lockedNextWord = currentIndex < filteredData.length - 1 ? filteredData[currentIndex + 1].word : null;
 
@@ -1312,36 +1130,29 @@ function renderCard(data, preventAudio = false) {
         displayTotal = historyData.length;
     }
     
-    // 🚀 鎖定當前的顯示序號
     lockedDisplayIndex = displayIdx + 1;
     lockedDisplayTotal = displayTotal;
 
-    const indexDisplayHtml = `
-        <span class="index-count">${lockedDisplayIndex} / ${lockedDisplayTotal}</span>
-    `;
+    const indexDisplayHtml = `<span class="index-count">${lockedDisplayIndex} / ${lockedDisplayTotal}</span>`;
 
     const currentLevel = stats.level;
     const currentTag = data.exam_tag || 'Level';
     
-    // ✨ 判斷當前的卡片是否位於「已經被鎖定」的 Level 或 Tag
     const isCurrentLevelLocked = currentLevel !== null && (appSettings.lockedLevels || []).includes(currentLevel);
     const isCurrentTagLocked = (appSettings.lockedLevels || []).includes(currentTag);
     const isCardLocked = isCurrentLevelLocked || isCurrentTagLocked;
     
-    // 如果被 Level 鎖定就只渲染當下 Level，其他情況渲染全部
     const levelsToRender = isCurrentLevelLocked ? [currentLevel] : [1, 2, 3, 4, 5, 6, 0];
     
     const levelBtnsHtml = levelsToRender.map(lvl => {
         const activeClass = (currentLevel === lvl) ? 'active' : '';
         const isThisLevelLocked = (appSettings.lockedLevels || []).includes(lvl);
         
-        // 如果卡片被鎖，或者目標 Level 被鎖，一律禁用
         let isDisabled = false;
         if (isCardLocked) isDisabled = true; 
         if (isThisLevelLocked) isDisabled = true;    
 
         const disabledAttr = isDisabled ? 'disabled' : '';
-        // ✨ 移除原本 lvl !== 0 的限制，讓 Level 0 也能顯示小鎖頭
         const lockIconHtml = isThisLevelLocked 
             ? `<svg class="btn-lock-icon" viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>` 
             : '';
@@ -1349,7 +1160,6 @@ function renderCard(data, preventAudio = false) {
         return `<button class="level-btn ${activeClass}" data-lvl="${lvl}" onclick="updateLevel('${safeWord}', ${lvl})" title="Level ${lvl}" ${disabledAttr}>${lvl}${lockIconHtml}</button>`;
     }).join('');
 
-    // ✨ 為標籤按鈕也加上小鎖頭圖示與防護
     const examTagLockIconHtml = isCurrentTagLocked 
         ? `<svg class="btn-lock-icon" viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" stroke-width="2" fill="none" style="position: absolute; top: -2px; right: -10px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>` 
         : '';
@@ -1369,7 +1179,6 @@ function renderCard(data, preventAudio = false) {
 
     const formsHtml = generateFormsHtml(data.forms);
 
-    // ✨ 檢查是否正在重新生成 Verb Forms
     const isFormsPending = typeof pendingRequests !== 'undefined' && pendingRequests.forms.has(data.word);
     const formsSpinIcon = `<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>`;
     const formsNormalIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>`;
@@ -1389,14 +1198,14 @@ function renderCard(data, preventAudio = false) {
         </div>
     `;
     
-    // (已還原) 保留最初始的寫法
     const sentencesHtml = (data.tense_sentences && data.tense_sentences.length > 0) 
         ? data.tense_sentences.map(s => {
-            const safeText = s.en.replace(/'/g, "\\'"); 
+            // 🚨 終極防護：確保 s.en 是字串
+            const safeText = (s.en || '').replace(/'/g, "\\'"); 
             return `
             <div class="sentence-item" onclick="playSentenceAudio('${safeText}', this)" title="Click to listen">
                 <div class="st-en-wrapper">
-                    <div class="st-en">${s.en}</div>
+                    <div class="st-en">${s.en || ''}</div>
                     <button class="audio-btn-sm" onclick="playSentenceAudio('${safeText}')" title="Listen">
                         <svg height="24px" viewBox="0 -960 960 960" width="24px">
                             <path d="M560-131v-82q90-26 145-100t55-168q0-94-55-168T560-749v-82q124 28 202 125.5T840-481q0 127-78 224.5T560-131ZM120-360v-240h160l200-200v640L280-360H120Zm440 40v-322q47 22 73.5 66t26.5 96q0 51-26.5 94.5T560-320ZM400-606l-86 86H200v80h114l86 86v-252ZM300-480Z"/>
@@ -1409,7 +1218,7 @@ function renderCard(data, preventAudio = false) {
                             <path d="M10 9.17a3 3 0 1 0 0 5.66"/><path d="M17 9.17a3 3 0 1 0 0 5.66"/><rect x="2" y="5" width="20" height="14" rx="2"/>
                         </svg>
                     </button>
-                    <div class="st-zh">${s.zh} (${s.type}${s.tense ? '/' + s.tense : ''})</div>
+                    <div class="st-zh">${s.zh || ''} (${s.type || ''}${s.tense ? '/' + s.tense : ''})</div>
                 </div>
             </div>`;
         }).join('') 
@@ -1433,15 +1242,9 @@ function renderCard(data, preventAudio = false) {
         const p = (posParts[i] || '').trim();
         if (t || p) {
             const displayPos = POS_ABBR_MAP[p.toLowerCase()] || p;
-            
             const posHtml = displayPos ? `<span class="pos-tag">${displayPos}</span>` : '';
             const transHtml = t ? `<span class="trans-text">${t}</span>` : '';
-            segmentsHtml += `
-                <span class="trans-segment">
-                    ${transHtml}
-                    ${posHtml}
-                </span>
-            `;
+            segmentsHtml += `<span class="trans-segment">${transHtml}${posHtml}</span>`;
         }
     }
 
@@ -1451,7 +1254,6 @@ function renderCard(data, preventAudio = false) {
                 <div id="trans-wrapper-${data.word}" class="trans-content-wrapper">
                     ${segmentsHtml}
                 </div>
-                
                 <button class="edit-btn-sm translation-edit-btn" onclick="enableEditMode('${safeWord}')" title="Edit">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -1506,7 +1308,6 @@ function renderCard(data, preventAudio = false) {
         </div>
     `;
 
-    // ✨ 檢查是否正在重新生成 Context Examples
     const isSentencesPending = typeof pendingRequests !== 'undefined' && pendingRequests.sentences.has(data.word);
     const sentencesSpinIcon = `<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>`;
     const sentencesNormalIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>`;
@@ -1603,7 +1404,7 @@ function renderCard(data, preventAudio = false) {
     document.getElementById('card-left-container').innerHTML = `
         <div class="vocabulary-container" onclick="handleHeaderClick(event)">
             <div class="word-header-container">
-                <h2 class="word-title">${data.word}</h2>
+                <h2 class="word-title">${data.word || ''}</h2>
                 <button class="audio-btn" id="vocabulary-audio-btn" onclick="playAudio('${safeWord}')" title="Listen">
                     <svg height="24px" viewBox="0 -960 960 960" width="24px"><path d="M560-131v-82q90-26 145-100t55-168q0-94-55-168T560-749v-82q124 28 202 125.5T840-481q0 127-78 224.5T560-131ZM120-360v-240h160l200-200v640L280-360H120Zm440 40v-322q47 22 73.5 66t26.5 96q0 51-26.5 94.5T560-320ZM400-606l-86 86H200v80h114l86 86v-252ZM300-480Z"/></svg>
                 </button>
@@ -1648,14 +1449,13 @@ function renderCard(data, preventAudio = false) {
         for (let i = 0; i < playTimes; i++) {
             if (currentViewedWord !== data.word || thisSession !== currentAudioSession) return; 
             
-            await playAudioAsync(data.word, true);
+            await playAudioAsync(data.word || '', true);
             if (i < playTimes - 1) {
                 await delay(100); 
                 if (thisSession !== currentAudioSession) return;
             }
         }
 
-        // 處理自動播放例句
         if (appSettings.autoPlay && appSettings.readSentences && data.tense_sentences && data.tense_sentences.length > 0) {
             if (playTimes > 0) await delay(800); 
             
@@ -1665,8 +1465,8 @@ function renderCard(data, preventAudio = false) {
                 for (let i = 0; i < data.tense_sentences.length; i++) {
                     if (currentViewedWord !== data.word || thisSession !== currentAudioSession) return;
                     
-                    // (已還原) 保留最初始的寫法
-                    let safeText = data.tense_sentences[i].en.replace(/'/g, ""); 
+                    // 🚨 防護
+                    let safeText = (data.tense_sentences[i].en || '').replace(/'/g, ""); 
                     let autoVoice = appSettings.randomVoiceAuto ? getRandomVoiceForCurrentAccent() : null;
                     
                     if (sentenceNodes[i]) sentenceNodes[i].classList.add('playing-sentence');
@@ -1685,7 +1485,6 @@ function renderCard(data, preventAudio = false) {
             }
         }
 
-        // 🚀 漸進式載入 4：判斷是否要在此刻跳下一頁
         const isWaitingForSentences = (!data.tense_sentences || data.tense_sentences.length === 0);
         
         if (appSettings.autoPlay && hasNext && !isWaitingForSentences) {
@@ -1729,9 +1528,6 @@ async function toggleBookmark(word) {
     }
 }
 
-// =========================================
-// ✨ 新增：考試標籤 (Exam Tag) 切換功能
-// =========================================
 const EXAM_TAGS = ['Level', 'Extra', 'TOEIC', 'IELTS', 'GMAT', 'TOEFL', 'Phrase'];
 async function cycleExamTag(word) {
     const item = historyData.find(i => i.word === word);
@@ -2048,9 +1844,6 @@ function playAudio(text, onEndCallback, isFromLoop = false, forcedVoice = null) 
     window.speechSynthesis.speak(utterance);
 }
 
-// =========================================
-// ✨ 新增：隨機切換人物唸出所有例句 (加入邊框追蹤動畫)
-// =========================================
 async function playAllSentencesRandomVoices(word) {
     const cacheItem = wordDetailsCache[word];
     if (!cacheItem || !cacheItem.tense_sentences || cacheItem.tense_sentences.length === 0) return;
@@ -2074,8 +1867,8 @@ async function playAllSentencesRandomVoices(word) {
         for (let i = 0; i < cacheItem.tense_sentences.length; i++) {
             if (currentViewedWord !== word || thisSession !== currentAudioSession) break;
             
-            // (已還原) 保留最初始的寫法
-            let safeText = cacheItem.tense_sentences[i].en.replace(/'/g, "");
+            // 🚨 防護
+            let safeText = (cacheItem.tense_sentences[i].en || '').replace(/'/g, "");
             
             let randomVoice = null;
             
@@ -2107,7 +1900,6 @@ async function playAllSentencesRandomVoices(word) {
     }
 }
 
-// ✨ 輔助函式：根據當前口音取得隨機發音人物
 function getRandomVoiceForCurrentAccent() {
     const voices = window.speechSynthesis.getVoices();
     const accentMap = { 'US': 'en-US', 'UK': 'en-GB', 'CA': 'en-CA', 'AU': 'en-AU' };
@@ -2121,7 +1913,6 @@ function getRandomVoiceForCurrentAccent() {
     return null;
 }
 
-// ✨ 輔助函式：專門給例句點擊使用的發音 Wrapper
 function playSentenceAudio(text, element = null) {
     let randomVoice = null;
     if (appSettings.randomVoiceManual) {
@@ -2343,9 +2134,6 @@ function cancelEditMode(word) {
     document.getElementById(`trans-edit-${word}`).style.display = 'none';
 }
 
-// =========================================
-// ✨ 終極修正版：儲存翻譯與詞性 (局部更新，無縫接軌)
-// =========================================
 async function saveTranslation(word) {
     const transInput = document.getElementById(`input-trans-${word}`);
     const posInput = document.getElementById(`input-pos-${word}`);
@@ -2464,9 +2252,6 @@ async function saveTranslation(word) {
     }
 }
 
-// =========================================
-// ✨ 新增：詞性選單動態處理邏輯
-// =========================================
 const POS_OPTIONS = ["noun", "pronoun", "verb", "adjective", "adverb", "preposition", "conjunction", "interjection", "phrase", "auxiliary verb", "prefix", "exclamation"];
 const POS_ABBR_MAP = {
     "noun": "n.",
@@ -2508,10 +2293,6 @@ function handlePosInput(input) {
     dataList.innerHTML = POS_OPTIONS.map(opt => `<option value="${prefix}${opt}">`).join('');
     dataList.dataset.currentPrefix = prefix;
 }
-
-// =========================================
-// ✨ 新增：定義 (Definition) 編輯功能
-// =========================================
 
 function enableEditDef(word) {
     document.getElementById(`disp-def-${word}`).style.display = 'none';
@@ -2579,10 +2360,6 @@ async function saveDefinition(word) {
     }
 }
 
-// =========================================
-// ✨ 新增：Verb Forms 編輯功能
-// =========================================
-
 let currentEditingFormsWord = null;
 
 function openEditFormsModal(word) {
@@ -2648,9 +2425,6 @@ async function saveForms() {
     }
 }
 
-// =========================================
-// ✨ 新增：鍵盤快捷鍵整合 (Level, Status & 翻頁)
-// =========================================
 function initKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
 
@@ -2768,9 +2542,6 @@ function initKeyboardShortcuts() {
     });
 }
 
-// =========================================
-// ✨ 修正版：重新生成例句功能 (局部更新，不干擾編輯)
-// =========================================
 async function regenerateSentences(word) {
     if (typeof pendingRequests !== 'undefined') pendingRequests.sentences.add(word);
 
@@ -2794,12 +2565,12 @@ async function regenerateSentences(word) {
                 if (container) {
                     const sentencesHtml = (data.sentences && data.sentences.length > 0) 
                         ? data.sentences.map(s => {
-                            // (已還原) 保留最初始的寫法
-                            const safeText = s.en.replace(/'/g, "\\'"); 
+                            // 🚨 防護
+                            const safeText = (s.en || '').replace(/'/g, "\\'"); 
                             return `
                             <div class="sentence-item" onclick="playSentenceAudio('${safeText}', this)" title="Click to listen">
                                 <div class="st-en-wrapper">
-                                    <div class="st-en">${s.en}</div>
+                                    <div class="st-en">${s.en || ''}</div>
                                     <button class="audio-btn-sm" onclick="playSentenceAudio('${safeText}')" title="Listen">
                                         <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px">
                                             <path d="M560-131v-82q90-26 145-100t55-168q0-94-55-168T560-749v-82q124 28 202 125.5T840-481q0 127-78 224.5T560-131ZM120-360v-240h160l200-200v640L280-360H120Zm440 40v-322q47 22 73.5 66t26.5 96q0 51-26.5 94.5T560-320ZM400-606l-86 86H200v80h114l86 86v-252ZM300-480Z"/>
@@ -2813,7 +2584,7 @@ async function regenerateSentences(word) {
                                             <path d="M10 9.17a3 3 0 1 0 0 5.66"/><path d="M17 9.17a3 3 0 1 0 0 5.66"/><rect x="2" y="5" width="20" height="14" rx="2"/>
                                         </svg>
                                     </button>
-                                    <div class="st-zh">${s.zh} (${s.type}${s.tense ? '/' + s.tense : ''})</div>
+                                    <div class="st-zh">${s.zh || ''} (${s.type || ''}${s.tense ? '/' + s.tense : ''})</div>
                                 </div>
                             </div>`;
                         }).join('') 
@@ -2835,8 +2606,8 @@ async function regenerateSentences(word) {
                             try {
                                 for (let i = 0; i < data.sentences.length; i++) {
                                     if (currentViewedWord !== word || thisSession !== currentAudioSession) return; 
-                                    // (已還原) 保留最初始的寫法
-                                    let safeText = data.sentences[i].en.replace(/'/g, ""); 
+                                    // 🚨 防護
+                                    let safeText = (data.sentences[i].en || '').replace(/'/g, ""); 
                                     let autoVoice = appSettings.randomVoiceAuto ? getRandomVoiceForCurrentAccent() : null;
                                     
                                     if (sentenceNodes[i]) sentenceNodes[i].classList.add('playing-sentence');
@@ -2881,9 +2652,6 @@ async function regenerateSentences(word) {
     }
 }
 
-// =========================================
-// ✨ 新增：即時更新序號/總數顯示邏輯
-// =========================================
 function updateCurrentIndexDisplay(word) {
     const el = document.querySelector('.index-count');
     if (!el) return;
@@ -2891,9 +2659,6 @@ function updateCurrentIndexDisplay(word) {
     el.innerText = `${lockedDisplayIndex} / ${lockedDisplayTotal}`;
 }
 
-// =========================================
-// ✨ 輔助：生成 Forms 表格 HTML
-// =========================================
 function generateFormsHtml(forms) {
     const f = forms || {};
     const getClickAttr = (val) => {
@@ -2935,9 +2700,6 @@ function clearModalInputs() {
     if(past) past.focus();
 }
 
-// =========================================
-// ✨ 修正版：處理 Verb Forms 重新生成 (局部更新，不干擾編輯)
-// =========================================
 async function regenerateVerbForms(word) {
     if (typeof pendingRequests !== 'undefined') pendingRequests.forms.add(word);
 
@@ -3019,7 +2781,6 @@ function closeAlertModal() {
     }
 }
 
-// ✨ 新增：處理標題區塊的點擊事件
 function handleHeaderClick(event) {
     const clickedInteractive = event.target.closest('button, input, textarea');
     
@@ -3040,7 +2801,6 @@ function handleHeaderClick(event) {
     }
 }
 
-// ✨ 新增：初始化發音口音自訂選單
 function initAccentSelect() {
     const wrapper = document.getElementById('accentSelectWrapper');
     if (!wrapper) return;
@@ -3074,10 +2834,6 @@ function initAccentSelect() {
         }
     });
 }
-
-// =========================================
-// ✨ 釘選功能與快速捷徑 (Pinned Actions)
-// =========================================
 
 function togglePin(key) {
     const idx = appSettings.pinnedItems.indexOf(key);
@@ -3204,9 +2960,6 @@ function handleQuickAction(key) {
     renderPinnedActions();
 }
 
-// =========================================
-// ✨ 動態抓取系統發音人物清單
-// =========================================
 function populateVoiceList() {
     const wrapper = document.getElementById('personSelectWrapper');
     const optionsContainer = document.getElementById('personOptionsContainer');
@@ -3288,9 +3041,6 @@ function initPersonSelect() {
     });
 }
 
-// =========================================
-// ✨ 新增：獨立更新卡片左右翻頁按鈕的函式
-// =========================================
 function updateCardNavigation(word) {
     if (!word) return;
 
@@ -3327,9 +3077,6 @@ function updateCardNavigation(word) {
     }
 }
 
-// =========================================
-// ✨ 新增：搜尋推薦選單功能 (Autocomplete)
-// =========================================
 function initSearchSuggestions() {
     const input = document.getElementById('wordInput');
     if (!input) return;
@@ -3554,9 +3301,6 @@ function initSearchSuggestions() {
     });
 }
 
-// =========================================
-// ✨ 新增：Level 鎖定 (定型) 功能
-// =========================================
 function toggleLevelLock(event, level) {
     event.stopPropagation(); 
     
@@ -3595,9 +3339,6 @@ function toggleLevelLock(event, level) {
     }
 }
 
-// =========================================
-// ✨ 新增：下拉選單鎖頭 UI 更新與切換
-// =========================================
 function updateSelectLockUI() {
     const lockBtn = document.getElementById('currentSelectLockBtn');
     if (!lockBtn) return;
@@ -3644,9 +3385,6 @@ function toggleCurrentFilterLock(event) {
     }
 }
 
-// =========================================
-// ✨ 新增：清除所有單字卡的瀏覽次數 (Views)
-// =========================================
 function confirmResetViews() {
     closeSettingsModal(); 
     
@@ -3679,9 +3417,6 @@ function confirmResetViews() {
     );
 }
 
-// =========================================
-// ✨ 點擊眼睛：切換例句中文顯示
-// =========================================
 function toggleZhVisibility(btnElement) {
     const row = btnElement.closest('.zh-row');
     if (row) {
@@ -3689,9 +3424,6 @@ function toggleZhVisibility(btnElement) {
     }
 }
 
-// =========================================
-// ✨ 新增：強制打破鎖定，重新計算左右鄰居與序號 (用於切換全域排序/篩選時)
-// =========================================
 function recalculateNavigationLock() {
     if (!currentViewedWord) return;
     const currentIndex = filteredData.findIndex(item => item.word === currentViewedWord);
