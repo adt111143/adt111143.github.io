@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Lexicon</title>
+    <link rel="icon" href="data/book.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="data/style.css">
+</head>
+<body>
+<div id="pageMask"></div>
+
+<aside class="sidebar closed" id="sidebar">
+    <div class="sidebar-header">
+        <div class="bar-top">
+            <div class="app-title" onclick="goToDashboard()">
+                <span>✦</span> HOME
+            </div>
+        </div>
+        <div class="sidebar-tools">
+            <input type="text" class="sidebar-input" id="historySearch" placeholder="Search..." autocomplete="off">
+            
+            <div class="custom-select-wrapper" id="customSelect">
+                <div class="custom-select-trigger">
+                    <div style="display: flex; align-items: center; gap: 6px; padding-left: 8px;">
+                        <span id="currentSelectText">All Words</span>
+                        <button id="currentSelectLockBtn" class="level-lock-btn" style="display: none; padding: 2px; margin: 0;" onclick="toggleCurrentFilterLock(event)" title="Lock/Unlock Category">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
+                        </button>
+                    </div>
+                    <div class="arrow"></div>
+                </div>
+                
+                <div class="custom-options">
+                    <div class="custom-option option-all selected" data-value="all">All Words</div>
+                    <div class="custom-option option-bookmarked" data-value="bookmarked">Marked</div> <!--<span style="color: #e3b341; margin-right: 5px;">★</span>-->
+                    <div style="height:1px; background:#30363d; margin:5px 0;"></div>
+                    <div class="custom-option option-new" data-value="new">New</div>
+                    <div class="custom-option option-Learning" data-value="learning">Learning</div>
+                    <div class="custom-option option-Mastered" data-value="mastered">Mastered</div>
+                    <div style="height:1px; background:#30363d; margin:5px 0;"></div>
+                    <div class="level-grid">
+                        <div class="custom-option" data-value="lvl-1">Level 1</div>
+                        <div class="custom-option" data-value="lvl-2">Level 2</div>
+                        <div class="custom-option" data-value="lvl-3">Level 3</div>
+                        <div class="custom-option" data-value="lvl-4">Level 4</div>
+                        <div class="custom-option" data-value="lvl-5">Level 5</div>
+                        <div class="custom-option" data-value="lvl-6">Level 6</div>
+                        <div class="custom-option" data-value="lvl-0">Level 0</div>
+                        <div class="custom-option" data-value="lvl-unset">Unset</div>
+                    </div>
+                    <div style="height:1px; background:#30363d; margin:5px 0;"></div>
+                    <div class="level-grid">
+                        <div class="custom-option" data-value="exam-Extra">Extra</div>
+                        <div class="custom-option" data-value="exam-TOEIC">TOEIC</div>
+                        <div class="custom-option" data-value="exam-IELTS">IELTS</div>
+                        <div class="custom-option" data-value="exam-GMAT">GMAT</div>
+                        <div class="custom-option" data-value="exam-TOEFL">TOEFL</div>
+                        <div class="custom-option" data-value="exam-Phrase">Phrase</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sort-group">
+                <div class="sort-label"></div><!--Sort by:-->
+                <div class="sort-actions">
+                    <button class="sort-btn active" data-sort="alpha" onclick="changeSort('alpha')" title="Alphabetical">A-Z</button>
+                    <button class="sort-btn" data-sort="status" onclick="changeSort('status')" title="Proficiency">State</button>
+                    <button class="sort-btn" data-sort="level" onclick="changeSort('level')" title="Level">Level</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="historyList" class="history-list"></div>
+</aside>
+
+<div class="main-wrapper">
+    
+    <header class="top-header">
+        <button class="toggle-btn" onclick="toggleSidebar()">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+        </button>
+
+        <div class="search-wrapper">
+            <div class="search-box">
+                <svg class="search-icon-left" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 10px;"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                <input type="text" class="main-input" id="wordInput" placeholder="Search for a word..." autocomplete="off">
+                <button class="search-btn" onclick="startLookup()">
+                    <span class="btn-text">Search</span>
+                    
+                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <button class="home-btn" onclick="openSettingsModal()" title="Settings">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+        </button>
+    </header>
+
+    <div id="pinnedActionsContainer" class="pinned-container"></div>
+
+    <div class="content-scroll">
+        
+        <div id="dashboard" class="dashboard">
+            <div class="dash-header">
+                <h2>Time Remaining</h2><!--<span>⏱︎</span>-->
+                <div id="timerDisplay" class="timer-display" onclick="openTimerModal()">
+                    00:00:00:00
+                </div>
+            </div>
+
+            <div class="dash-grid">
+                
+                <div class="dash-column">
+                    <div class="section-label">Proficiency Stats</div>
+                    <div class="dash-stats">
+                        <div class="stat-card" onclick="filterByStat('all')">
+                            <div class="stat-val" id="countTotal">0</div>
+                            <div class="stat-label">Total</div>
+                        </div>
+                        <div class="stat-card" onclick="filterByStat('new')">
+                            <div class="stat-val" style="color:var(--color-new)" id="countNew">0</div>
+                            <div class="stat-label">New</div>
+                        </div>
+                        <div class="stat-card" onclick="filterByStat('learning')">
+                            <div class="stat-val" style="color:var(--color-learning)" id="countLearning">0</div>
+                            <div class="stat-label">Learning</div>
+                        </div>
+                        <div class="stat-card" onclick="filterByStat('mastered')">
+                            <div class="stat-val" style="color:var(--color-mastered)" id="countMastered">0</div>
+                            <div class="stat-label">Mastered</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dash-column">
+                    <div id="levelView">
+                        <div class="section-label" style="display: flex; align-items: center;">
+                            <span>Level Breakdown</span>
+                            <button class="dash-toggle-btn" onclick="toggleDashboardView()" title="Switch to Tags">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+                            </button>
+                        </div>
+                        <div class="level-stats" id="levelStatsArea">
+                            </div>
+                    </div>
+
+                    <div id="tagsView" style="display: none;">
+                        <div class="section-label" style="display: flex; align-items: center;">
+                            <span>Tags</span>
+                            <button class="dash-toggle-btn" onclick="toggleDashboardView()" title="Switch to Level Breakdown">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>
+                            </button>
+                        </div>
+                        <div class="level-stats" id="tagsStatsArea">
+                            </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div id="cardArea" class="card"></div>
+
+
+    </div>
+</div>
+
+<div id="loader">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin">
+        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+    </svg>
+    <div style="margin-top: 15px; font-size: 0.9rem; letter-spacing: 1px; font-weight: 600;">THINKING...</div>
+</div>
+
+<div id="customModal" class="modal-overlay">
+    <div class="modal-box">
+        <h3 class="modal-title" id="modalTitle">Confirm Action</h3>
+        <p class="modal-message" id="modalMessage">Are you sure?</p>
+        <div class="modal-actions">
+            <button class="modal-btn cancel" onclick="closeModal()">Cancel</button>
+            <button class="modal-btn confirm" id="modalConfirmBtn">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<div id="timerModal" class="modal-overlay">
+    <div class="modal-box">
+        <h3 class="modal-title">Timer Settings</h3>
+        
+        <div class="timer-inputs-container">
+            <div class="timer-field">
+                <label>Days</label>
+                <input type="number" id="tDays" class="modal-input center-text" min="0" value="0" placeholder="0">
+            </div>
+            <div class="timer-sep">:</div>
+            <div class="timer-field">
+                <label>Hours</label>
+                <input type="number" id="tHours" class="modal-input center-text" min="0" max="23" value="0" placeholder="0">
+            </div>
+            <div class="timer-sep">:</div>
+            <div class="timer-field">
+                <label>Mins</label>
+                <input type="number" id="tMins" class="modal-input center-text" min="0" max="59" value="0" placeholder="0">
+            </div>
+        </div>
+
+        <div class="modal-actions">
+            <button class="modal-btn cancel" onclick="closeTimerModal()">Cancel</button>
+            <button class="modal-btn confirm danger" onclick="confirmResetTimer()">Reset</button>
+            <button class="modal-btn confirm" onclick="confirmSetTimer()">Start</button>
+        </div>
+    </div>
+</div>
+
+<div id="settingsModal" class="modal-overlay">
+    <div id="settingsModalbox" class="modal-box">
+        
+        <h3 class="modal-title" style="text-align: center;">
+            Settings
+        </h3>
+        
+        <div class="setting-item" >
+            <button class="pin-btn" style="background-color: transparent; cursor: default;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 10v3"/><path d="M6 6v11"/><path d="M10 3v18"/><path d="M14 8v7"/><path d="M18 5v13"/><path d="M22 10v3"/></svg>
+            </button>
+            <div class="setting-left">
+                <div class="setting-text">
+                    <span class="s-title">Voice Character</span>
+                    <span class="s-desc">Choose person</span>
+                </div>
+                <div class="custom-select-wrapper" id="personSelectWrapper" data-value="">
+                    <div class="custom-select-trigger" style="padding: 6px 10px; min-height: unset; background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.2);">
+                        <span id="currentPersonText">Default</span>
+                        <div class="arrow"></div>
+                    </div>
+                    <div class="custom-options" id="personOptionsContainer" style="min-width: 130px;">
+                        </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-list">
+            <div class="settings-col">
+                
+                <div class="setting-item active">
+                    <button class="pin-btn" data-key="randomVoiceManual" onclick="togglePin('randomVoiceManual')" title="Pin to Quick Actions">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.5V7a3 3 0 0 1 6 0v3.5l2 4.5H7l2-4.5Z"/></svg>
+                    </button>
+                    <div class="setting-left">
+                        <div class="setting-text">
+                            <span class="s-title">Random Voice</span>
+                            <span class="s-desc">Click sentences</span>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="set-random-manual" onchange="updateSetting('randomVoiceManual')">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="setting-item active">
+                    <button class="pin-btn" data-key="randomVoiceAuto" onclick="togglePin('randomVoiceAuto')" title="Pin to Quick Actions">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.5V7a3 3 0 0 1 6 0v3.5l2 4.5H7l2-4.5Z"/></svg>
+                    </button>
+                    <div class="setting-left">
+                        <div class="setting-text">
+                            <span class="s-title">Random Voice</span>
+                            <span class="s-desc">Auto-read sentences</span>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="set-random-auto" onchange="updateSetting('randomVoiceAuto')">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="setting-item">
+                    <button class="pin-btn" data-key="autoVoice" onclick="togglePin('autoVoice')" title="Pin to Quick Actions">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.5V7a3 3 0 0 1 6 0v3.5l2 4.5H7l2-4.5Z"/></svg>
+                    </button>
+                    <div class="setting-left">
+                        <div class="setting-text">
+                            <span class="s-title">Auto Pronounce</span>
+                            <span class="s-desc">Speak word on load</span>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="set-auto-voice" onchange="updateSetting('autoVoice')">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="setting-item sub-item" id="pronounce-count-setting">
+                    <div class="setting-text">
+                        <span class="s-title">Repeat</span>
+                        <span class="s-desc">Times to speak</span>
+                    </div>
+                    <input type="number" id="set-pronounce-count" class="setting-input" value="1" min="1" max="10" onchange="updateSetting('pronounceCount')">
+                </div>
+
+                <div class="setting-item">
+                    <button class="pin-btn" data-key="resetViews" onclick="togglePin('resetViews')" title="Pin to Quick Actions">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.5V7a3 3 0 0 1 6 0v3.5l2 4.5H7l2-4.5Z"/></svg>
+                    </button>
+                    <div class="setting-left">
+                        <div class="setting-text">
+                            <div class="s-title">Reset Views</div>
+                            <div class="s-desc">Clear all word view counts</div>
+                        </div>
+                        <!-- ✨ 這裡不放 Switch 開關，改放一顆清除按鈕 -->
+                        <button class="cancel-btn-mini cancel-btn-views" onclick="confirmResetViews()">
+                            Clear
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="settings-col">
+                <div class="setting-item">
+                    <button class="pin-btn" data-key="accent" onclick="togglePin('accent')" title="Pin to Quick Actions">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.5V7a3 3 0 0 1 6 0v3.5l2 4.5H7l2-4.5Z"/></svg>
+                    </button>
+                    <div class="setting-left">    
+                        <div class="setting-text">
+                            <span class="s-title">Voice Accent</span>
+                            <span class="s-desc">American or British</span>
+                        </div>
+                        
+                        <div class="custom-select-wrapper" id="accentSelectWrapper" style="width: 80px; flex-shrink: 0;" data-value="US">
+                            <div class="custom-select-trigger" style="padding: 6px 10px; min-height: unset; background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.2);">
+                                <span id="currentAccentText" style="font-weight: bold; color: #fff;">US</span>
+                                <div class="arrow"></div>
+                            </div>
+                            <div class="custom-options" style="min-width: 80px;">
+                                <div class="custom-option accent-option" data-value="US">US</div>
+                                <div class="custom-option accent-option" data-value="UK">UK</div>
+                                <div class="custom-option accent-option" data-value="CA">CA</div>
+                                <div class="custom-option accent-option" data-value="AU">AU</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="setting-item">
+                    <button class="pin-btn disabled-pin" data-key="showCardActions" onclick="togglePin('showCardActions')" title="Pin to Quick Actions" disabled>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.5V7a3 3 0 0 1 6 0v3.5l2 4.5H7l2-4.5Z"/></svg>
+                    </button>
+                    <div class="setting-left">
+                        <div class="setting-text">
+                            <div class="s-title">Show Card Actions</div>
+                            <div class="s-desc">Unlock Card and Search</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="toggle-card-actions" onchange="updateSetting('showCardActions')" disabled>
+                            <span class="slider disabled-toggle"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="setting-item">
+                    <button class="pin-btn" data-key="hideSentenceZh" onclick="togglePin('hideSentenceZh')" title="Pin to Quick Actions">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.5V7a3 3 0 0 1 6 0v3.5l2 4.5H7l2-4.5Z"/></svg>
+                    </button>
+                    <div class="setting-left">
+                        <div class="setting-text">
+                            <div class="s-title">Hide Sentence</div>
+                            <div class="s-desc">Hide sentences zh</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="set-hide-sentence-zh" onchange="updateSetting('hideSentenceZh')">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="setting-item">
+                    <button class="pin-btn" data-key="autoPlay" onclick="togglePin('autoPlay')" title="Pin to Quick Actions">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.5V7a3 3 0 0 1 6 0v3.5l2 4.5H7l2-4.5Z"/></svg>
+                    </button>
+                    <div class="setting-left">
+                        <div class="setting-text">
+                            <span class="s-title">Auto Play</span>
+                            <span class="s-desc">Go to next card automatically</span>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="set-auto-play" onchange="updateSetting('autoPlay')">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="setting-item sub-item" id="read-sentences-setting">
+                    <div class="setting-text">
+                        <span class="s-title">Read Sentences</span>
+                        <span class="s-desc">Speak examples before next</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="set-read-sentences" onchange="updateSetting('readSentences')">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
+            </div>
+        </div>
+        
+        <!--
+        <div class="modal-actions">
+            <button class="modal-btn cancel" onclick="closeSettingsModal()">Cancel</button>
+        </div>-->
+    </div>
+</div>
+
+<div id="editDefModal" class="modal-overlay">
+    <div class="modal-box">
+        <h3 class="modal-title">Edit Definition</h3>
+        
+        <div style="margin: 20px 0;">
+            <textarea id="editDefInput" class="modal-textarea" rows="5" placeholder="Enter English definition..."></textarea>
+        </div>
+
+        <div class="modal-actions">
+            <button class="modal-btn cancel" onclick="closeEditDefModal()">Cancel</button>
+            <button class="modal-btn confirm" onclick="saveDefinition()">Save</button>
+        </div>
+    </div>
+</div>
+
+<div id="editFormsModal" class="modal-overlay">
+    <div class="modal-box">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 class="modal-title" style="margin: 0;">Edit Verb Forms</h3>
+            
+            <button type="button" class="modal-clear-btn" onclick="clearModalInputs()" title="Clear all fields">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+            </button>
+        </div>
+        
+        <div style="display: flex; flex-direction: column; gap: 15px; margin: 20px 0;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <label style="width: 85px; text-align: right; color: #8b949e; font-size: 0.9rem;">Past</label>
+                <input type="text" id="editFormPast" class="modal-input" style="flex: 1; padding: 8px; font-size: 0.95rem;">
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <label style="width: 85px; text-align: right; color: #8b949e; font-size: 0.9rem;">Continuous</label>
+                <input type="text" id="editFormCont" class="modal-input" style="flex: 1; padding: 8px; font-size: 0.95rem;">
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <label style="width: 85px; text-align: right; color: #8b949e; font-size: 0.9rem;">Future</label>
+                <input type="text" id="editFormFut" class="modal-input" style="flex: 1; padding: 8px; font-size: 0.95rem;">
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <label style="width: 85px; text-align: right; color: #8b949e; font-size: 0.9rem;">Perfect</label>
+                <input type="text" id="editFormPerf" class="modal-input" style="flex: 1; padding: 8px; font-size: 0.95rem;">
+            </div>
+        </div>
+
+        <div class="modal-actions">
+            <button class="modal-btn cancel" onclick="closeEditFormsModal()">Cancel</button>
+            <button class="modal-btn confirm" onclick="saveForms()">Save</button>
+        </div>
+    </div>
+</div>
+
+<div id="alertModal" class="modal-overlay">
+    <div class="modal-box" style="max-width: 320px; text-align: center;">
+        <div style="margin-bottom: 15px; display: flex; justify-content: center; color: var(--accent);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+        </div>
+        <p id="alertMessage" style="color: var(--text-muted); margin-bottom: 25px; font-size: 1rem; line-height: 1.5;"></p>
+        <div class="modal-actions" style="justify-content: center;">
+            <button class="modal-btn confirm" onclick="closeAlertModal()" style="width: 100%;">OK</button>
+        </div>
+    </div>
+</div>
+
+<script src="data/script.js"></script>
+</body>
+</html>
