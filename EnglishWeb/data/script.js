@@ -1385,7 +1385,7 @@ function renderCard(data, preventAudio = false) {
     
     const sentencesHtml = (data.tense_sentences && data.tense_sentences.length > 0) 
         ? data.tense_sentences.map(s => {
-            const safeText = s.en.replace(/'/g, "\\'"); 
+            const safeText = (s.en || '').replace(/'/g, "\\'");
             return `
             <div class="sentence-item" onclick="playSentenceAudio('${safeText}', this)" title="Click to listen">
                 <div class="st-en-wrapper">
@@ -1670,7 +1670,7 @@ function renderCard(data, preventAudio = false) {
                 for (let i = 0; i < data.tense_sentences.length; i++) {
                     if (currentViewedWord !== data.word || thisSession !== currentAudioSession) return;
                     
-                    let safeText = data.tense_sentences[i].en.replace(/'/g, ""); 
+                    let safeText = (data.tense_sentences[i].en || '').replace(/'/g, "");
                     let autoVoice = appSettings.randomVoiceAuto ? getRandomVoiceForCurrentAccent() : null;
                     
                     // ✨ 發音前：加上高亮與放大狀態
@@ -2093,7 +2093,7 @@ async function playAllSentencesRandomVoices(word) {
         for (let i = 0; i < cacheItem.tense_sentences.length; i++) {
             if (currentViewedWord !== word || thisSession !== currentAudioSession) break;
             
-            let safeText = cacheItem.tense_sentences[i].en.replace(/'/g, "");
+            let safeText = (cacheItem.tense_sentences[i].en || '').replace(/'/g, "");
             
             let randomVoice = null;
             
@@ -2887,7 +2887,7 @@ async function regenerateSentences(word) {
                 if (container) {
                     const sentencesHtml = (data.sentences && data.sentences.length > 0) 
                         ? data.sentences.map(s => {
-                            const safeText = s.en.replace(/'/g, "\\'"); 
+                            const safeText = (s.en || '').replace(/'/g, "\\'");
                             return `
                             <div class="sentence-item" onclick="playSentenceAudio('${safeText}', this)" title="Click to listen">
                                 <div class="st-en-wrapper">
@@ -2929,7 +2929,7 @@ async function regenerateSentences(word) {
                             try {
                                 for (let i = 0; i < data.sentences.length; i++) {
                                     if (currentViewedWord !== word || thisSession !== currentAudioSession) return; 
-                                    let safeText = data.sentences[i].en.replace(/'/g, ""); 
+                                    let safeText = (data.sentences[i].en || '').replace(/'/g, "");
                                     let autoVoice = appSettings.randomVoiceAuto ? getRandomVoiceForCurrentAccent() : null;
                                     
                                     // ✨ 發音前：加上高亮與放大狀態
