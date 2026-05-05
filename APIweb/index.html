@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>空氣品質 API 監測系統</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-title-row">
+                <h1>空氣品質監測系統</h1>
+                
+                <div class="api-controls">
+                    <input type="text" id="api-key-input" class="api-input" placeholder="貼上環境部 API KEY...">
+                    <button class="btn btn-connect" onclick="fetchData()">連線數據</button>
+                    <button class="btn btn-download" onclick="downloadJSON()">
+                        <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                        下載
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <div class="dashboard-grid">
+            <div class="main-content">
+                <div class="control-panel">
+                    <div class="input-group">
+                        <label>搜尋測站</label>
+                        <input type="text" id="search-in" class="ui-input" placeholder="例如：松山">
+                    </div>
+                    <div class="input-group">
+                        <label>選擇縣市</label>
+                        <select id="county-sel" class="ui-select">
+                            <option value="all">所有縣市</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label>狀態篩選</label>
+                        <select id="status-sel" class="ui-select">
+                            <option value="all">所有狀態</option>
+                            <option value="良好">良好</option>
+                            <option value="普通">普通</option>
+                            <option value="對敏感族群不健康">對敏感族群不健康</option>
+                            <option value="對所有族群不健康">對所有族群不健康</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="cards-grid" id="card-list">
+                    <div style="grid-column: 1/-1; text-align:center; padding: 100px; color: var(--text-muted);">
+                        <h2>尚未連接數據</h2>
+                        <p>請於右上方輸入您的環境部 API KEY 後點擊連線。</p>
+                    </div>
+                </div>
+            </div>
+
+            <aside>
+                <div class="chart-card">
+                    <div style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="font-size: 1rem;">數據統計</h3>
+                        <select id="chart-type-sel" class="ui-select" style="padding: 4px; font-size: 0.75rem; width: auto;">
+                            <option value="doughnut">品質佔比</option>
+                            <option value="bar">測站統計</option>
+                            <option value="top10">AQI 前十名</option>
+                        </select>
+                    </div>
+                    <canvas id="qualityChart"></canvas>
+                </div>
+            </aside>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
