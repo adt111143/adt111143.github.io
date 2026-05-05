@@ -2186,7 +2186,7 @@ let appSettings = JSON.parse(localStorage.getItem('appSettings')) || {
     autoPlay: false,
     readSentences: true,
     interval: 1.5,
-    showCardActions: false,
+    showCardActions: true,
     pronounceCount: 1,
     accent: 'US',
     pinnedItems: [],
