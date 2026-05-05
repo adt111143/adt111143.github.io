@@ -1,4 +1,4 @@
-const GAS_URL = 'https://script.google.com/a/macros/gm.ntcu.edu.tw/s/AKfycbxJoy_qSjMY5e1I26ZbJmkSY_Fz42Jdq4k54GURWX7-25cGdTmFlh9r9hU895M_j1zM/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxJoy_qSjMY5e1I26ZbJmkSY_Fz42Jdq4k54GURWX7-25cGdTmFlh9r9hU895M_j1zM/exec';
 
 async function gasFetch(action, payload = {}, signal = null) {
     const options = {
