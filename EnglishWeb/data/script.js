@@ -184,7 +184,6 @@ function initGlobalFocus() {
 }
 
 // 初始化自訂下拉選單
-// 初始化自訂下拉選單
 function initCustomSelect() {
     const wrapper = document.querySelector('.custom-select-wrapper');
     const trigger = wrapper.querySelector('.custom-select-trigger');
@@ -381,18 +380,34 @@ async function startLookup(wordToSearch = null, checkHistory = true) {
     try {
         const data = await gasFetch('lookup', { word: word, checkHistory: checkHistory });
         
-        if (data.error === 'not_found') {
+        // 🚨 終極修正：攔截「所有」後端傳來的錯誤，不只是 'not_found'
+        if (data.error) {
             goToDashboard();
-            showConfirmModal(
-                'No such word found.', 
-                `The word could not be found.<br>Please check if the spelling is correct!`, 
-                () => {
-                    input.focus();
-                    input.select();
-                },
-                false, 
-                false
-            );
+            
+            if (data.error === 'not_found') {
+                showConfirmModal(
+                    'No such word found.', 
+                    `The word could not be found.<br>Please check if the spelling is correct!`, 
+                    () => {
+                        input.focus();
+                        input.select();
+                    },
+                    false, 
+                    false
+                );
+            } else {
+                // 如果是 AI 格式錯誤或其他意外錯誤，顯示這個警告
+                showConfirmModal(
+                    '系統錯誤', 
+                    `AI 處理失敗或格式錯誤：<br>${data.error}`, 
+                    () => {
+                        input.focus();
+                        input.select();
+                    },
+                    true, 
+                    false
+                );
+            }
             return; 
         }
 
@@ -555,7 +570,6 @@ function changeSort(mode) {
     }
 }
 
-// 執行排序
 // 執行排序
 function applySort() {
     historyData.sort((a, b) => {
@@ -956,7 +970,6 @@ async function updateLevel(word, newLevel) {
     }
     
     // 重新排序 -> 更新過濾 -> 更新序號 -> 更新翻頁按鈕 -> 捲動側邊欄跟隨
-    // 重新排序 -> 更新過濾 -> 更新序號 -> 更新翻頁按鈕 -> 捲動側邊欄跟隨
     applySort();
     filterHistory();
     
@@ -1145,7 +1158,7 @@ function filterHistory() {
     const container = document.getElementById('historyList');
 
     const result = historyData.filter(item => {
-        const wordNoSpace = item.word.toLowerCase().replace(/\s+/g, '');
+        const wordNoSpace = (item.word || '').toLowerCase().replace(/\s+/g, '');
         const matchText = wordNoSpace.includes(searchText);
         let matchFilter = true;
         const status = (item.stats && item.stats.status) ? item.stats.status : 'new';
@@ -1181,7 +1194,6 @@ function filterHistory() {
     renderVirtualList(); // 初次渲染
 }
 
-// ✨ 2. 新增：只渲染可見區域的虛擬清單生成器
 // ✨ 2. 新增：只渲染可見區域的虛擬清單生成器
 function renderVirtualList() {
     const container = document.getElementById('historyList');
@@ -1242,9 +1254,6 @@ function renderVirtualList() {
 }
 
 // ✨ 3. 修改：配合虛擬滾動的自動捲動邏輯
-// =========================================
-// ✨ 修正版：配合虛擬滾動的自動捲動邏輯 (移除強制重繪)
-// =========================================
 function scrollToActiveItem() {
     if (!currentViewedWord) return;
     const index = filteredData.findIndex(i => i.word === currentViewedWord);
@@ -1256,7 +1265,6 @@ function scrollToActiveItem() {
         const currentTop = container.scrollTop;
         
         // 🚀 核心修復 2：只有在「真正需要捲動」時才呼叫 scrollTo！
-        // 並且徹底移除 setTimeout(renderVirtualList, 50) 的無條件重繪，讓 DOM 保持安靜穩定。
         if (Math.abs(currentTop - targetTop) > 1) {
             container.scrollTo({ top: targetTop, behavior: 'smooth' });
         }
@@ -1273,12 +1281,11 @@ function renderCard(data, preventAudio = false) {
     if(loader) loader.style.display = 'none';
     if(cardArea) cardArea.style.display = 'flex';
 
-    currentViewedWord = data.word;
-    
-    const safeWord = data.word.replace(/'/g, "\\'");
+    // 🚨 終極修正：防護 data.word undefined 問題
+    currentViewedWord = data.word || 'Unknown';
+    const safeWord = (data.word || '').replace(/'/g, "\\'");
 
     // 🚀 核心修復 1：移除暴力的 filterHistory()，改用局部更新！
-    // 不再摧毀側邊欄 DOM，完美保留使用者的 Hover 狀態與動畫，徹底解決左右跳針！
     document.querySelectorAll('.history-item').forEach(el => el.classList.remove('current-active'));
     const activeNode = document.getElementById(`history-item-${data.word}`);
     if (activeNode) activeNode.classList.add('current-active');
@@ -1343,7 +1350,6 @@ function renderCard(data, preventAudio = false) {
     }).join('');
 
     // ✨ 為標籤按鈕也加上小鎖頭圖示與防護
-    // ✨ 修正 1：移除多餘的 wrapper <div>，把鎖頭直接放進 button 裡面，恢復原本的基準線對齊
     const examTagLockIconHtml = isCurrentTagLocked 
         ? `<svg class="btn-lock-icon" viewBox="0 0 24 24" width="10" height="10" stroke="currentColor" stroke-width="2" fill="none" style="position: absolute; top: -2px; right: -10px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>` 
         : '';
@@ -1383,9 +1389,10 @@ function renderCard(data, preventAudio = false) {
         </div>
     `;
     
+    // (已還原) 保留最初始的寫法
     const sentencesHtml = (data.tense_sentences && data.tense_sentences.length > 0) 
         ? data.tense_sentences.map(s => {
-            const safeText = (s.en || '').replace(/'/g, "\\'");
+            const safeText = s.en.replace(/'/g, "\\'"); 
             return `
             <div class="sentence-item" onclick="playSentenceAudio('${safeText}', this)" title="Click to listen">
                 <div class="st-en-wrapper">
@@ -1425,7 +1432,6 @@ function renderCard(data, preventAudio = false) {
         const t = (transParts[i] || '').trim();
         const p = (posParts[i] || '').trim();
         if (t || p) {
-            // ✨ 加入自動縮寫轉換 (如果對照表裡沒有，就維持原樣)
             const displayPos = POS_ABBR_MAP[p.toLowerCase()] || p;
             
             const posHtml = displayPos ? `<span class="pos-tag">${displayPos}</span>` : '';
@@ -1524,9 +1530,6 @@ function renderCard(data, preventAudio = false) {
     if (!isInitialized) {
         cardArea.innerHTML = `
             <button class="nav-side-btn prev" id="nav-btn-prev" onclick="navigateHistory(-1)" title="Prev">
-                <!--
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                -->
                 <div class="tooltip" id="tooltip-prev"></div>
             </button>
 
@@ -1540,9 +1543,6 @@ function renderCard(data, preventAudio = false) {
             </div>
 
             <button class="nav-side-btn next" id="nav-btn-next" onclick="navigateHistory(1)" title="Next">
-                <!--
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-                -->
                 <div class="tooltip" id="tooltip-next"></div>
             </button>
         `;
@@ -1559,7 +1559,6 @@ function renderCard(data, preventAudio = false) {
         document.getElementById('tooltip-next').innerText = lockedNextWord ? lockedNextWord : 'End';
     }
 
-    // ✨ 修正 2：不寫死 display: flex; 改用動態塞入 style 屬性
     const levelTogglesStyle = currentTag === 'Level' ? '' : 'style="display: none;"';
 
     document.getElementById('card-meta-container').innerHTML = `
@@ -1595,7 +1594,6 @@ function renderCard(data, preventAudio = false) {
         </div>
     `;
 
-    // ✨ 新增：判斷是否為動詞，且在 hide-card-actions 模式下排除 auxiliary verb
     const currentPos = data.part_of_speech || '';
     const isHideCardActions = document.body.classList.contains('hide-card-actions');
     const isAuxVerb = /\bauxiliary verb\b/i.test(currentPos);
@@ -1650,7 +1648,6 @@ function renderCard(data, preventAudio = false) {
         for (let i = 0; i < playTimes; i++) {
             if (currentViewedWord !== data.word || thisSession !== currentAudioSession) return; 
             
-            // ✨ 加上 true，告訴底層這是迴圈呼叫的
             await playAudioAsync(data.word, true);
             if (i < playTimes - 1) {
                 await delay(100); 
@@ -1662,23 +1659,20 @@ function renderCard(data, preventAudio = false) {
         if (appSettings.autoPlay && appSettings.readSentences && data.tense_sentences && data.tense_sentences.length > 0) {
             if (playTimes > 0) await delay(800); 
             
-            // ✨ 1. 抓取畫面上所有的句子節點
             const sentenceNodes = document.querySelectorAll('#sentences-container .sentence-item');
 
-            // ✨ 2. 使用 try...finally 確保中斷時能清空狀態
             try {
                 for (let i = 0; i < data.tense_sentences.length; i++) {
                     if (currentViewedWord !== data.word || thisSession !== currentAudioSession) return;
                     
-                    let safeText = (data.tense_sentences[i].en || '').replace(/'/g, "");
+                    // (已還原) 保留最初始的寫法
+                    let safeText = data.tense_sentences[i].en.replace(/'/g, ""); 
                     let autoVoice = appSettings.randomVoiceAuto ? getRandomVoiceForCurrentAccent() : null;
                     
-                    // ✨ 發音前：加上高亮與放大狀態
                     if (sentenceNodes[i]) sentenceNodes[i].classList.add('playing-sentence');
                     
                     await playAudioAsync(safeText, true, autoVoice); 
                     
-                    // ✨ 發音後：移除狀態
                     if (sentenceNodes[i]) sentenceNodes[i].classList.remove('playing-sentence');
                     
                     if (i < data.tense_sentences.length - 1) {
@@ -1687,7 +1681,6 @@ function renderCard(data, preventAudio = false) {
                     }
                 }
             } finally {
-                // 防彈機制：如果被中斷，強制清除所有句子的播放狀態
                 sentenceNodes.forEach(n => n.classList.remove('playing-sentence'));
             }
         }
@@ -1695,7 +1688,6 @@ function renderCard(data, preventAudio = false) {
         // 🚀 漸進式載入 4：判斷是否要在此刻跳下一頁
         const isWaitingForSentences = (!data.tense_sentences || data.tense_sentences.length === 0);
         
-        // 如果正在等待例句，就把「跳下一頁」的任務交接給 regenerateSentences，這裡先按兵不動
         if (appSettings.autoPlay && hasNext && !isWaitingForSentences) {
             if (currentViewedWord !== data.word || thisSession !== currentAudioSession) return;
             await delay(1500); 
@@ -1714,14 +1706,12 @@ async function toggleBookmark(word) {
         const data = await gasFetch('toggleBookmark', { word: word });
         
         if (data.success) {
-            // 更新摘要 (為了側邊欄)
             const item = historyData.find(i => i.word === word);
             if (item) {
                 if (!item.stats) item.stats = {};
                 item.stats.isBookmarked = data.isBookmarked;
             }
 
-            // ✨ 修正：同時更新詳細快取 (為了單字卡)
             if (wordDetailsCache[word] && wordDetailsCache[word].stats) {
                 wordDetailsCache[word].stats.isBookmarked = data.isBookmarked;
             }
@@ -1747,22 +1737,19 @@ async function cycleExamTag(word) {
     const item = historyData.find(i => i.word === word);
     if (!item) return;
 
-    // ✨ 修正重點：先取得 currentTag 的值，才能在下面的 if 防護牆中使用！
     const currentLvl = (item.stats && item.stats.level !== undefined) ? item.stats.level : null;
     const currentTag = item.exam_tag || 'Level'; 
     const lockedList = appSettings.lockedLevels || [];
 
-    // ✨ 終極鎖定防護：如果該單字目前的 Level 被鎖定了，或是它所在的 Tag 被鎖定了，絕對不允許它轉移！
     if ((currentLvl !== null && lockedList.includes(currentLvl)) || lockedList.includes(currentTag)) {
         console.warn("This word is locked in its current category. Cannot change tag.");
-        return; // 🛑 踩煞車，直接終止函式！
+        return; 
     }
 
     const currentIndex = EXAM_TAGS.indexOf(currentTag);
     const nextIndex = (currentIndex === -1) ? 0 : (currentIndex + 1) % EXAM_TAGS.length;
     const nextTag = EXAM_TAGS[nextIndex];
 
-    // 如果切換到其他標籤 (非 Level)，自動清空原本的 Level 紀錄
     if (nextTag !== 'Level') {
         if (item.stats) item.stats.level = null;
         if (wordDetailsCache[word] && wordDetailsCache[word].stats) {
@@ -1800,7 +1787,6 @@ async function cycleExamTag(word) {
             applySort();
             filterHistory();
             
-            // ✨ 關鍵修改：考試標籤改變時，強制打破鎖定，立刻對齊新排序的鄰居！
             recalculateNavigationLock(); 
             
             updateCurrentIndexDisplay(word);
@@ -1984,12 +1970,10 @@ function playAudio(text, onEndCallback, isFromLoop = false, forcedVoice = null) 
 
     if (!isFromLoop) {
         currentAudioSession = Date.now(); 
-        // ✨ 終極必殺技：只要使用者手動點擊了任何其他發音，瞬間強制熄滅「全部播放」的燈號！
         const allPlayBtn = document.getElementById('playAllSentencesBtn');
         if (allPlayBtn) allPlayBtn.classList.remove('playing');
     }
 
-    // 🚀 核心修復 2：如果被中斷了，強制讓上一個等待中的 Promise 繼續往下走，不准卡死！
     if (pendingAudioResolve) {
         pendingAudioResolve();
         pendingAudioResolve = null;
@@ -2003,7 +1987,6 @@ function playAudio(text, onEndCallback, isFromLoop = false, forcedVoice = null) 
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     
-    // 把這次的結束通知存起來
     pendingAudioResolve = onEndCallback;
     
     let targetLang = 'en-US';
@@ -2029,7 +2012,6 @@ function playAudio(text, onEndCallback, isFromLoop = false, forcedVoice = null) 
     if (voices.length > 0) {
         let selectedVoice = null;
         
-        // ✨ 關鍵修改：如果傳入了強制指定的聲音，就優先使用它！
         if (forcedVoice) {
             selectedVoice = forcedVoice;
         } else if (isEnglish && appSettings.voiceName && appSettings.voiceName[appSettings.accent]) {
@@ -2050,7 +2032,7 @@ function playAudio(text, onEndCallback, isFromLoop = false, forcedVoice = null) 
 
     utterance.onend = () => {
         currentUtterance = null; 
-        pendingAudioResolve = null; // ✨ 正常結束，清空紀錄
+        pendingAudioResolve = null; 
         if (onEndCallback) onEndCallback(); 
     };
     
@@ -2059,7 +2041,7 @@ function playAudio(text, onEndCallback, isFromLoop = false, forcedVoice = null) 
             console.warn("Speech error:", e.error);
         }
         currentUtterance = null;
-        pendingAudioResolve = null; // ✨ 錯誤/中斷結束，清空紀錄
+        pendingAudioResolve = null; 
         if (onEndCallback) onEndCallback(); 
     };
 
@@ -2086,30 +2068,26 @@ async function playAllSentencesRandomVoices(word) {
     const btn = document.getElementById('playAllSentencesBtn');
     if (btn) btn.classList.add('playing');
 
-    // ✨ 抓取畫面上所有的「句子容器」
     const sentenceNodes = document.querySelectorAll('#sentences-container .sentence-item');
 
     try {
         for (let i = 0; i < cacheItem.tense_sentences.length; i++) {
             if (currentViewedWord !== word || thisSession !== currentAudioSession) break;
             
-            let safeText = (cacheItem.tense_sentences[i].en || '').replace(/'/g, "");
+            // (已還原) 保留最初始的寫法
+            let safeText = cacheItem.tense_sentences[i].en.replace(/'/g, "");
             
             let randomVoice = null;
             
-            // ✨ 關鍵修改：將「全部播放」的隨機邏輯與 randomVoiceAuto 開關正式綁定！
-            // 如果開關有開，才去抽籤；如果沒開，randomVoice 就是 null，底層會自動使用您指定的預設人物。
             if (appSettings.randomVoiceAuto && filteredVoices.length > 0) {
                 const randomIndex = Math.floor(Math.random() * filteredVoices.length);
                 randomVoice = filteredVoices[randomIndex];
             }
 
-            // ✨ 發音前：為「當下這句」加上高亮狀態 (觸發邊框動畫)
             if (sentenceNodes[i]) sentenceNodes[i].classList.add('playing-sentence');
 
             await playAudioAsync(safeText, true, randomVoice);
             
-            // ✨ 發音後：拔除高亮狀態
             if (sentenceNodes[i]) sentenceNodes[i].classList.remove('playing-sentence');
 
             if (currentViewedWord !== word || thisSession !== currentAudioSession) break;
@@ -2125,8 +2103,6 @@ async function playAllSentencesRandomVoices(word) {
             currentBtn.classList.remove('playing');
         }
         
-        // ✨ 雙重防彈機制：萬一使用者在發音途中切換卡片、或點擊別的聲音，
-        // 確保所有句子的高亮邊框都被清乾淨，絕不會卡在 5px 縮不回來！
         sentenceNodes.forEach(node => node.classList.remove('playing-sentence'));
     }
 }
@@ -2152,15 +2128,12 @@ function playSentenceAudio(text, element = null) {
         randomVoice = getRandomVoiceForCurrentAccent();
     }
     
-    // 1. 先清除畫面上可能殘留的其他句子播放狀態
     document.querySelectorAll('.sentence-item.playing-sentence').forEach(n => n.classList.remove('playing-sentence'));
     
-    // 2. 加上目前這句的播放狀態 (小喇叭亮起、隱藏的中文浮現)
     if (element) {
         element.classList.add('playing-sentence');
     }
 
-    // 3. 把結果丟給底層發音引擎，並傳入 callback 讓它結束時自動關閉狀態
     playAudio(text, () => {
         if (element) element.classList.remove('playing-sentence');
     }, false, randomVoice);
@@ -2195,13 +2168,12 @@ let appSettings = JSON.parse(localStorage.getItem('appSettings')) || {
     randomVoiceAuto: false,
     hideSentenceZh: false
 };
-// 防呆與舊版資料轉移
 if (!Array.isArray(appSettings.lockedLevels)) appSettings.lockedLevels = [];
 if (appSettings.pronounceCount === undefined) appSettings.pronounceCount = 1;
 if (appSettings.accent === undefined) appSettings.accent = 'US';
 if (appSettings.readSentences === undefined) appSettings.readSentences = true;
-if (appSettings.randomVoiceManual === undefined) appSettings.randomVoiceManual = false; // ✨ 防呆
-if (appSettings.randomVoiceAuto === undefined) appSettings.randomVoiceAuto = false;     // ✨ 防呆
+if (appSettings.randomVoiceManual === undefined) appSettings.randomVoiceManual = false; 
+if (appSettings.randomVoiceAuto === undefined) appSettings.randomVoiceAuto = false;     
 if (appSettings.hideSentenceZh === undefined) appSettings.hideSentenceZh = false;
 
 if (appSettings.hideSentenceZh) {
@@ -2210,7 +2182,6 @@ if (appSettings.hideSentenceZh) {
     document.body.classList.remove('hide-sentence-zh');
 }
 
-// 如果舊玩家的 voiceName 還是一個字串，把它轉成物件格式
 if (typeof appSettings.voiceName === 'string') {
     appSettings.voiceName = { [appSettings.accent]: appSettings.voiceName };
 } else if (!appSettings.voiceName) {
@@ -2243,7 +2214,6 @@ function openSettingsModal() {
         accentWrapper.setAttribute('data-value', appSettings.accent);
         document.getElementById('currentAccentText').textContent = appSettings.accent;
         
-        // 幫對應的選項加上粗體標記
         const options = accentWrapper.querySelectorAll('.accent-option');
         options.forEach(opt => {
             if (opt.getAttribute('data-value') === appSettings.accent) {
@@ -2329,7 +2299,6 @@ function updateSetting(key) {
     else if (key === 'hideSentenceZh') {
         appSettings.hideSentenceZh = document.getElementById('set-hide-sentence-zh').checked;
         
-        // ✨ 即時套用到畫面上
         if (appSettings.hideSentenceZh) {
             document.body.classList.add('hide-sentence-zh');
         } else {
@@ -2359,7 +2328,6 @@ function enableEditMode(word) {
     document.getElementById(`trans-view-${word}`).style.display = 'none';
     document.getElementById(`trans-edit-${word}`).style.display = 'block';
     
-    // ✨ 關鍵修正：打開翻譯編輯時，強制把輸入框的值更新為快取中的最新內容
     const cacheItem = wordDetailsCache[word] || historyData.find(i => i.word === word) || {};
     const transInput = document.getElementById(`input-trans-${word}`);
     const posInput = document.getElementById(`input-pos-${word}`);
@@ -2387,7 +2355,6 @@ async function saveTranslation(word) {
     const newTrans = transInput.value.trim();
     const newPos = posInput ? posInput.value.trim() : '';
 
-    // 1: 樂觀更新畫面 (DOM) - 翻譯與詞性部分
     const transParts = newTrans.split('/');
     const posParts = newPos.split('/');
     const maxLen = Math.max(transParts.length, posParts.length);
@@ -2412,7 +2379,6 @@ async function saveTranslation(word) {
     if (wrapper) wrapper.innerHTML = segmentsHtml;
     cancelEditMode(word);
 
-    // ✨ 樂觀更新前端快取，避免切換卡片時資料退回
     if (!wordDetailsCache[word]) {
         wordDetailsCache[word] = historyData.find(i => i.word === word) || { word: word };
     }
@@ -2428,7 +2394,6 @@ async function saveTranslation(word) {
         historyItem.part_of_speech = newPos;
     }
 
-    // 2: 處理 Loading 狀態與背景追蹤
     const currentForms = wordDetailsCache[word].forms || {};
     const isVerb = /\bverb\b/i.test(newPos);
     const isFormsEmpty = !currentForms.past && !currentForms.continuous && !currentForms.future && !currentForms.perfect;
@@ -2447,30 +2412,23 @@ async function saveTranslation(word) {
         }
     }
 
-    // 3: 發送請求 & 局部更新最終結果
     try {
         const data = await gasFetch('updateDetails', { word: word, translation: newTrans, part_of_speech: newPos });
 
         if (data.success && data.entry) {
-            // 真正覆蓋快取
             wordDetailsCache[word] = data.entry;
             
-            // ✨ 任務完成，立刻解除追蹤 (這非常重要，要放在更新 UI 之前)
             if (typeof pendingRequests !== 'undefined') pendingRequests.forms.delete(word);
 
-            // ✨ 核心修復：如果目前畫面正是這張單字卡，執行「局部更新 DOM」，不重新渲染整張卡片
             if (currentViewedWord === word) {
                 const container = document.getElementById(`forms-container-${word}`);
                 if (container) {
-                    // 更新 class 讓它顯示為動詞
                     container.classList.remove('not-verb');
                     container.classList.add('is-verb');
                     
-                    // 刪除舊的網格
                     const oldGrid = container.querySelector('.forms-grid');
                     if (oldGrid) oldGrid.remove();
                     
-                    // 插入新的網格
                     const newGridHtml = generateFormsHtml(data.entry.forms);
                     container.insertAdjacentHTML('beforeend', newGridHtml);
                     
@@ -2478,7 +2436,6 @@ async function saveTranslation(word) {
                     if (newGrid) newGrid.style.animation = 'fadeIn 0.5s ease';
                 }
 
-                // 復原按鈕
                 const currentRegenBtn = document.getElementById(`btn-regen-forms-${word}`);
                 if (currentRegenBtn) {
                     currentRegenBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>`;
@@ -2489,7 +2446,6 @@ async function saveTranslation(word) {
         }
     } catch (e) {
         console.error("Save error:", e);
-        // 失敗時退回舊資料
         wordDetailsCache[word].translation = oldTrans;
         wordDetailsCache[word].part_of_speech = oldPos;
         if (historyItem) {
@@ -2534,7 +2490,6 @@ function handlePosInput(input) {
     const val = input.value;
     const lastSlashIndex = val.lastIndexOf('/');
     
-    // 1. 如果沒有斜線，顯示基礎選單 (noun, verb...)
     if (lastSlashIndex === -1) {
         if (dataList.dataset.currentPrefix !== 'base') {
             dataList.innerHTML = POS_OPTIONS.map(opt => `<option value="${opt}">`).join('');
@@ -2543,18 +2498,13 @@ function handlePosInput(input) {
         return;
     }
 
-    // 2. 有斜線，計算前綴 (例如 "noun/")
     const prefix = val.substring(0, lastSlashIndex + 1);
 
-    // ✨ 關鍵修正：如果目前的輸入值已經等於某個完整選項 (代表使用者剛選完)，就停止動作！
-    // 這能避免瀏覽器在「選取瞬間」因為清單重繪而發生文字重複貼上的 Bug
     const isCompleteOption = POS_OPTIONS.some(opt => val === prefix + opt);
     if (isCompleteOption) return;
 
-    // 3. 如果前綴沒變，就不用重繪 (效能優化)
     if (dataList.dataset.currentPrefix === prefix) return;
 
-    // 4. 更新選單，把所有選項前面都補上 "noun/"
     dataList.innerHTML = POS_OPTIONS.map(opt => `<option value="${prefix}${opt}">`).join('');
     dataList.dataset.currentPrefix = prefix;
 }
@@ -2564,18 +2514,15 @@ function handlePosInput(input) {
 // =========================================
 
 function enableEditDef(word) {
-    // 隱藏原本的文字與按鈕
     document.getElementById(`disp-def-${word}`).style.display = 'none';
     document.getElementById(`btn-edit-def-${word}`).style.display = 'none';
     
-    // 顯示輸入框
     document.getElementById(`def-edit-mode-${word}`).style.display = 'block';
     
     const input = document.getElementById(`input-def-${word}`);
     const cacheItem = wordDetailsCache[word] || historyData.find(i => i.word === word) || {};
     
     if (input) {
-        // ✨ 關鍵修正：每次打開編輯時，強制把輸入框的值更新為快取中的最新內容
         input.value = cacheItem.definition || '';
         
         input.focus();
@@ -2586,14 +2533,11 @@ function enableEditDef(word) {
 }
 
 function cancelEditDef(word) {
-    // 恢復顯示原本的文字與按鈕
     document.getElementById(`disp-def-${word}`).style.display = '';
     document.getElementById(`btn-edit-def-${word}`).style.display = '';
     
-    // 隱藏輸入框
     document.getElementById(`def-edit-mode-${word}`).style.display = 'none';
     
-    // 放棄修改，還原成快取中的資料
     const cacheItem = wordDetailsCache[word] || historyData.find(i => i.word === word) || {};
     const input = document.getElementById(`input-def-${word}`);
     if (input) {
@@ -2608,33 +2552,27 @@ async function saveDefinition(word) {
     const newDef = input.value.trim();
     const cacheItem = wordDetailsCache[word] || historyData.find(i => i.word === word) || {};
     
-    // 記住舊的定義，萬一伺服器出錯可以用來還原
     const oldDef = cacheItem.definition || ''; 
     
-    // ✨ 樂觀更新 1：先將新資料寫入快取！(這樣稍後 cancelEditDef 就不會讀到舊資料)
     cacheItem.definition = newDef;
     
-    // ✨ 樂觀更新 2：改變畫面上的文字
     const displayEl = document.getElementById(`disp-def-${word}`);
     if (displayEl) {
         displayEl.innerText = newDef;
     }
     
-    // 關閉編輯模式 (此時快取已經是新的了，不怕被覆蓋)
     cancelEditDef(word);
 
     try {
         const data = await gasFetch('updateDetails', { word: word, definition: newDef });
 
         if (!data.success) {
-            // 失敗時退回舊資料
             cacheItem.definition = oldDef;
             if (displayEl) displayEl.innerText = oldDef;
             openAlertModal(data.error || "Failed to save definition.");
         }
     } catch (e) {
         console.error(e);
-        // 失敗時退回舊資料
         cacheItem.definition = oldDef;
         if (displayEl) displayEl.innerText = oldDef;
         openAlertModal("Error connecting to server.");
@@ -2650,7 +2588,6 @@ let currentEditingFormsWord = null;
 function openEditFormsModal(word) {
     currentEditingFormsWord = word;
     
-    // ✨ 增加防呆：優先讀取快取，若無則從 historyData 找墊底
     const item = wordDetailsCache[word] || historyData.find(i => i.word === word) || {}; 
     const f = item.forms || {};
 
@@ -2668,7 +2605,6 @@ function closeEditFormsModal() {
     currentEditingFormsWord = null;
 }
 
-// 點擊遮罩關閉 (Optional)
 document.getElementById('editFormsModal').addEventListener('click', (e) => {
     if (e.target.id === 'editFormsModal') closeEditFormsModal();
 });
@@ -2689,14 +2625,12 @@ async function saveForms() {
         const data = await gasFetch('updateDetails', { word: targetWord, forms: newForms });
 
         if (data.success) {
-            // ✨ 修正：直接使用伺服器回傳的「最新完整資料 (data.entry)」
             const updatedEntry = data.entry;
             
             if (updatedEntry) {
                 wordDetailsCache[targetWord] = updatedEntry;
                 renderCard(updatedEntry, true); 
             } else {
-                // 萬一伺服器沒給，手動防呆
                 if (!wordDetailsCache[targetWord]) {
                     wordDetailsCache[targetWord] = historyData.find(i => i.word === targetWord) || { word: targetWord };
                 }
@@ -2722,34 +2656,22 @@ function initKeyboardShortcuts() {
 
         if (e.repeat) return;
 
-        // 0. 通用檢查：如果卡片沒顯示 (例如在 Dashboard 或 Exam)，完全不執行任何快捷鍵
         const cardArea = document.getElementById('cardArea');
         if (!cardArea || cardArea.style.display === 'none') return;
 
-        
-        // ==================================================
-        // ✨ 新增：鎖定模式攔截器
-        // 當 body 有 hide-card-actions 時，除方向鍵外，所有 Alt 快捷鍵失效
-        // ==================================================
         if (e.altKey && document.body.classList.contains('hide-card-actions')) {
             if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') {
-                return; // 命中條件，直接強制結束，不執行下方的任何快捷鍵邏輯
+                return; 
             }
         }
 
-        // ---------------------------------------------------------
-        // A. Alt 組合鍵 (Level & Status)
-        // ---------------------------------------------------------
         if (e.altKey) {
-            const key = e.key.toLowerCase(); // 轉小寫以防萬一
+            const key = e.key.toLowerCase(); 
 
-            // 1. Level 設定 (Alt + 0~6)
-            // 1. Level 設定 (Alt + 0~6)
             const levelKeys = ['0', '1', '2', '3', '4', '5', '6'];
             if (levelKeys.includes(key)) {
                 e.preventDefault();
                 const targetBtn = document.querySelector(`.level-btn[data-lvl="${key}"]`);
-                // ✨ 加入 !targetBtn.disabled 判斷，確保鎖定的按鈕按不下去
                 if (targetBtn && !targetBtn.disabled) { 
                     targetBtn.click();
                     targetBtn.focus();
@@ -2758,8 +2680,6 @@ function initKeyboardShortcuts() {
                 return;
             }
 
-            // 2. ✨ Status 設定 (Alt + n / l / m)
-            // n -> New, l -> Learning, m -> Mastered
             const statusMap = {
                 'n': 'new',
                 'l': 'learning',
@@ -2768,11 +2688,9 @@ function initKeyboardShortcuts() {
 
             if (statusMap[key]) {
                 e.preventDefault();
-                // 尋找對應 status 的按鈕 (例如 .status-btn.new)
                 const targetBtn = document.querySelector(`.status-btn.${statusMap[key]}`);
                 if (targetBtn) {
                     targetBtn.click();
-                    // 視覺回饋：讓按鈕短暫聚焦
                     targetBtn.focus();
                     setTimeout(() => targetBtn.blur(), 200);
                 }
@@ -2780,9 +2698,6 @@ function initKeyboardShortcuts() {
             }
         }
 
-        // ==================================================
-        // 先判斷 Alt + S (因為這時候游標一定在 Input 裡面)
-        // ==================================================
         if (e.altKey && e.key.toLowerCase() === 's') {
             const saveBtns = document.querySelectorAll('.save-btn-mini');
             for (let btn of saveBtns) {
@@ -2839,11 +2754,6 @@ function initKeyboardShortcuts() {
             }
         }
         
-        // ---------------------------------------------------------
-        // B. 左右方向鍵 (翻頁)
-        // ---------------------------------------------------------
-        
-        // 檢查是否在輸入框打字
         const active = document.activeElement;
         if (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable) {
             return;
@@ -2862,10 +2772,8 @@ function initKeyboardShortcuts() {
 // ✨ 修正版：重新生成例句功能 (局部更新，不干擾編輯)
 // =========================================
 async function regenerateSentences(word) {
-    // ✨ 1. 加入背景追蹤
     if (typeof pendingRequests !== 'undefined') pendingRequests.sentences.add(word);
 
-    // 🚨 修正：直接用 ID 抓取按鈕，避免切換頁面時抓錯 DOM
     const btn = document.getElementById('REsentencesbtn');
     if (btn) {
         btn.disabled = true;
@@ -2881,13 +2789,13 @@ async function regenerateSentences(word) {
             }
             wordDetailsCache[word].tense_sentences = data.sentences;
 
-            // 如果完成時目前還停留在這個字，才更新畫面
             if (currentViewedWord === word) {
                 const container = document.getElementById('sentences-container');
                 if (container) {
                     const sentencesHtml = (data.sentences && data.sentences.length > 0) 
                         ? data.sentences.map(s => {
-                            const safeText = (s.en || '').replace(/'/g, "\\'");
+                            // (已還原) 保留最初始的寫法
+                            const safeText = s.en.replace(/'/g, "\\'"); 
                             return `
                             <div class="sentence-item" onclick="playSentenceAudio('${safeText}', this)" title="Click to listen">
                                 <div class="st-en-wrapper">
@@ -2922,22 +2830,19 @@ async function regenerateSentences(word) {
                             const thisSession = currentAudioSession;
                             await delay(500); 
                             
-                            // ✨ 1. 抓取剛生成的句子節點
                             const sentenceNodes = document.querySelectorAll('#sentences-container .sentence-item');
                             
-                            // ✨ 2. 使用 try...finally 確保中斷時能清空狀態
                             try {
                                 for (let i = 0; i < data.sentences.length; i++) {
                                     if (currentViewedWord !== word || thisSession !== currentAudioSession) return; 
-                                    let safeText = (data.sentences[i].en || '').replace(/'/g, "");
+                                    // (已還原) 保留最初始的寫法
+                                    let safeText = data.sentences[i].en.replace(/'/g, ""); 
                                     let autoVoice = appSettings.randomVoiceAuto ? getRandomVoiceForCurrentAccent() : null;
                                     
-                                    // ✨ 發音前：加上高亮與放大狀態
                                     if (sentenceNodes[i]) sentenceNodes[i].classList.add('playing-sentence');
                                     
                                     await playAudioAsync(safeText, true, autoVoice); 
                                     
-                                    // ✨ 發音後：移除狀態
                                     if (sentenceNodes[i]) sentenceNodes[i].classList.remove('playing-sentence');
                                     
                                     if (i < data.sentences.length - 1) {
@@ -2946,11 +2851,9 @@ async function regenerateSentences(word) {
                                     }
                                 }
                             } finally {
-                                // 防彈機制
                                 sentenceNodes.forEach(n => n.classList.remove('playing-sentence'));
                             }
                             
-                            // 判斷是否跳下一頁
                             const currentIndex = filteredData.findIndex(item => item.word === word);
                             const hasNext = (currentIndex !== -1 && currentIndex < filteredData.length - 1);
                             if (hasNext && currentViewedWord === word && thisSession === currentAudioSession) {
@@ -2968,10 +2871,8 @@ async function regenerateSentences(word) {
         console.error(e);
         alert("Error regenerating sentences.");
     } finally {
-        // ✨ 2. 任務結束，解除追蹤
         if (typeof pendingRequests !== 'undefined') pendingRequests.sentences.delete(word);
         
-        // ✨ 3. 重新抓取按鈕 (因為如果中途切換過卡片，舊的 btn 變數就失效了)
         const currentBtn = document.getElementById('REsentencesbtn');
         if (currentBtn && currentViewedWord === word) {
             currentBtn.disabled = false;
@@ -2987,7 +2888,6 @@ function updateCurrentIndexDisplay(word) {
     const el = document.querySelector('.index-count');
     if (!el) return;
 
-    // ✨ 核心修正：直接顯示鎖定的序號，不重新計算，維持視覺絕對穩定
     el.innerText = `${lockedDisplayIndex} / ${lockedDisplayTotal}`;
 }
 
@@ -3022,19 +2922,16 @@ function generateFormsHtml(forms) {
 }
 
 function clearModalInputs() {
-    // 取得四個欄位的 ID
     const past = document.getElementById('editFormPast');
     const cont = document.getElementById('editFormCont');
     const fut = document.getElementById('editFormFut');
     const perf = document.getElementById('editFormPerf');
 
-    // 清空值
     if(past) past.value = '';
     if(cont) cont.value = '';
     if(fut) fut.value = '';
     if(perf) perf.value = '';
     
-    // (選用) 讓第一個欄位獲得焦點
     if(past) past.focus();
 }
 
@@ -3042,13 +2939,11 @@ function clearModalInputs() {
 // ✨ 修正版：處理 Verb Forms 重新生成 (局部更新，不干擾編輯)
 // =========================================
 async function regenerateVerbForms(word) {
-    // ✨ 1. 加入背景追蹤
     if (typeof pendingRequests !== 'undefined') pendingRequests.forms.add(word);
 
     const btn = document.getElementById(`btn-regen-forms-${word}`);
     const container = document.getElementById(`forms-container-${word}`);
     
-    // 不用 return 阻斷，確保就算切換卡片，背景 API 依然會執行
     if (btn) {
         btn.innerHTML = `
             <svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -3068,7 +2963,6 @@ async function regenerateVerbForms(word) {
             }
             wordDetailsCache[word].forms = data.forms;
             
-            // 如果完成時畫面還停留在這張卡片，才更新 DOM
             if (currentViewedWord === word && container) {
                 const oldGrid = container.querySelector('.forms-grid');
                 if (oldGrid) oldGrid.remove();
@@ -3086,10 +2980,8 @@ async function regenerateVerbForms(word) {
         console.error(e);
         openAlertModal("Error connecting to server.");
     } finally {
-        // ✨ 2. 任務結束，解除追蹤
         if (typeof pendingRequests !== 'undefined') pendingRequests.forms.delete(word);
         
-        // ✨ 3. 重新抓取按鈕並復原
         const currentBtn = document.getElementById(`btn-regen-forms-${word}`);
         if (currentBtn && currentViewedWord === word) {
             currentBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/></svg>`;
@@ -3106,14 +2998,11 @@ function openAlertModal(message) {
     if (modal && msgEl) {
         msgEl.textContent = message;
         
-        // 1. 先設定 display 讓它存在於頁面上
         modal.style.display = 'flex';
         
-        // 2. 強制設定 opacity 為 1 (解決透明看不見的問題)
-        // 使用 setTimeout 確保瀏覽器有時間先處理 display，這樣 transition 動畫才會生效
         setTimeout(() => {
             modal.style.opacity = '1';
-            modal.style.visibility = 'visible'; // 確保可見
+            modal.style.visibility = 'visible'; 
         }, 10);
     }
 }
@@ -3121,14 +3010,12 @@ function openAlertModal(message) {
 function closeAlertModal() {
     const modal = document.getElementById('alertModal');
     if (modal) {
-        // 1. 先變透明
         modal.style.opacity = '0';
         
-        // 2. 等動畫跑完再隱藏 display
         setTimeout(() => {
             modal.style.display = 'none';
             modal.style.visibility = 'hidden';
-        }, 300); // 假設您的 CSS transition 是 0.3s
+        }, 300); 
     }
 }
 
@@ -3169,22 +3056,18 @@ function initAccentSelect() {
     options.forEach(option => {
         option.addEventListener('click', (e) => {
             e.stopPropagation();
-            // 清除其他選項的選取狀態
             options.forEach(opt => opt.classList.remove('selected'));
             option.classList.add('selected');
             
-            // 更新文字與隱藏的值
             const value = option.getAttribute('data-value');
             currentText.textContent = value;
             wrapper.setAttribute('data-value', value);
             wrapper.classList.remove('open');
             
-            // 觸發儲存設定
             updateSetting('accent');
         });
     });
 
-    // 點擊外面時關閉選單
     window.addEventListener('click', (e) => {
         if (!wrapper.contains(e.target)) {
             wrapper.classList.remove('open');
@@ -3196,13 +3079,12 @@ function initAccentSelect() {
 // ✨ 釘選功能與快速捷徑 (Pinned Actions)
 // =========================================
 
-// 1. 切換圖釘狀態並儲存
 function togglePin(key) {
     const idx = appSettings.pinnedItems.indexOf(key);
     if (idx === -1) {
-        appSettings.pinnedItems.push(key); // 尚未釘選則加入
+        appSettings.pinnedItems.push(key); 
     } else {
-        appSettings.pinnedItems.splice(idx, 1); // 已釘選則移除
+        appSettings.pinnedItems.splice(idx, 1); 
     }
     localStorage.setItem('appSettings', JSON.stringify(appSettings));
     
@@ -3210,10 +3092,9 @@ function togglePin(key) {
     renderPinnedActions();
 }
 
-// 2. 更新設定面板內的圖釘樣式 (亮起/旋轉)
 function updatePinUI() {
     document.querySelectorAll('.pin-btn').forEach(btn => {
-        const key = btn.dataset.key; // 讀取按鈕上的 data-key
+        const key = btn.dataset.key; 
         if (appSettings.pinnedItems.includes(key)) {
             btn.classList.add('pinned');
         } else {
@@ -3222,7 +3103,6 @@ function updatePinUI() {
     });
 }
 
-// 3. 渲染主畫面右上角的捷徑按鈕
 function renderPinnedActions() {
     let container = document.getElementById('pinnedActionsContainer');
     if (!container) return;
@@ -3233,7 +3113,6 @@ function renderPinnedActions() {
         btn.className = 'quick-action-btn';
         btn.onclick = () => handleQuickAction(key);
         
-        // 根據不同的 key 塞入對應的圖示與發光狀態 (.active)
         if (key === 'autoVoice') {
             btn.title = 'Toggle Auto Pronounce';
             btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.236 22a3 3 0 0 0-2.2-5"/><path d="M16 20a3 3 0 0 1 3-3h1a2 2 0 0 0 2-2v-2a4 4 0 0 0-4-4V4"/><path d="M18 13h.01"/><path d="M18 6a4 4 0 0 0-4 4 7 7 0 0 0-7 7c0-5 4-5 4-10.5a4.5 4.5 0 1 0-9 0 2.5 2.5 0 0 0 5 0C7 10 3 11 3 17c0 2.8 2.2 5 5 5h10"/></svg>`;
@@ -3264,14 +3143,12 @@ function renderPinnedActions() {
             btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 22-1-4"/><path d="M19 14a1 1 0 0 0 1-1v-1a2 2 0 0 0-2-2h-3a1 1 0 0 1-1-1V4a2 2 0 0 0-4 0v5a1 1 0 0 1-1 1H6a2 2 0 0 0-2 2v1a1 1 0 0 0 1 1"/><path d="M19 14H5l-1.973 6.767A1 1 0 0 0 4 22h16a1 1 0 0 0 .973-1.233z"/><path d="m8 22 1-4"/></svg>`;
             
         } else if (key === 'accent') {
-            // 發音口音：直接顯示文字 (US/UK/CA/AU)，並預設為發光狀態
             btn.title = 'Switch Voice Accent';
             btn.innerText = appSettings.accent; 
             btn.classList.add('active'); 
         }
         else if (key === 'hideSentenceZh') {
             btn.title = 'Toggle Sentence Translation';
-            // 使用一個眼睛被劃掉的 SVG 圖示來代表「盲測/隱藏」
             btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>`;
             if (appSettings.hideSentenceZh) btn.classList.add('active');
         }
@@ -3280,7 +3157,6 @@ function renderPinnedActions() {
     });
 }
 
-// 4. 處理捷徑按鈕的點擊行為
 function handleQuickAction(key) {
 
     if (key === 'resetViews') {
@@ -3288,13 +3164,11 @@ function handleQuickAction(key) {
         return; 
     }
 
-    // 若是「發音口音」，純輪替文字，不需處理數字
     if (key === 'accent') {
         const accents = ['US', 'UK', 'CA', 'AU'];
         let idx = accents.indexOf(appSettings.accent);
         appSettings.accent = accents[(idx + 1) % accents.length];
         
-        // 同步修改背景設定面板的自訂下拉選單狀態 (確保使用者點開設定時是對的)
         const accentWrapper = document.getElementById('accentSelectWrapper');
         if (accentWrapper) {
             accentWrapper.setAttribute('data-value', appSettings.accent);
@@ -3311,7 +3185,6 @@ function handleQuickAction(key) {
         populateVoiceList();
         localStorage.setItem('appSettings', JSON.stringify(appSettings));
     } 
-    // 其他「開關類」功能，模擬點擊設定裡的 Checkbox 並觸發 updateSetting()
     else {
         let cbId = '';
         if (key === 'autoVoice') cbId = 'set-auto-voice';
@@ -3328,15 +3201,11 @@ function handleQuickAction(key) {
         }
     }
     
-    // 重新渲染畫面上的捷徑，更新發光狀態與文字
     renderPinnedActions();
 }
 
 // =========================================
 // ✨ 動態抓取系統發音人物清單
-// =========================================
-// =========================================
-// ✨ 動態抓取系統發音人物清單 (自訂選單版)
 // =========================================
 function populateVoiceList() {
     const wrapper = document.getElementById('personSelectWrapper');
@@ -3352,7 +3221,6 @@ function populateVoiceList() {
     const filteredVoices = voices.filter(v => v.lang.replace('_', '-').includes(targetLang));
     optionsContainer.innerHTML = '';
 
-    // ✨ 取得目前口音專屬的記憶人聲
     const savedVoice = appSettings.voiceName[appSettings.accent] || '';
 
     const createOption = (actualName, displayName) => {
@@ -3361,7 +3229,6 @@ function populateVoiceList() {
         opt.setAttribute('data-value', actualName);
         opt.textContent = displayName;
 
-        // 比對是否為該口音儲存的聲音
         if (actualName === savedVoice) {
             opt.classList.add('selected');
             currentText.textContent = displayName || 'Default';
@@ -3385,18 +3252,15 @@ function populateVoiceList() {
 
     let isMatched = false;
 
-    // 加入 Default
     createOption('', 'Default');
     if (savedVoice === '') isMatched = true;
 
-    // 加入人物
     filteredVoices.forEach(v => {
         const cleanName = v.name.replace(/(Microsoft|Google|English|Online|\(Natural\))/gi, '').trim() || v.name;
         createOption(v.name, cleanName);
         if (v.name === savedVoice) isMatched = true;
     });
 
-    // 防呆：如果記憶的聲音不見了，切回 Default
     if (!isMatched) {
         appSettings.voiceName[appSettings.accent] = '';
         currentText.textContent = 'Default';
@@ -3407,7 +3271,6 @@ function populateVoiceList() {
 }
 window.speechSynthesis.onvoiceschanged = populateVoiceList;
 
-// ✨ 新增：初始化發音人物選單的開關邏輯
 function initPersonSelect() {
     const wrapper = document.getElementById('personSelectWrapper');
     if (!wrapper) return;
@@ -3431,7 +3294,6 @@ function initPersonSelect() {
 function updateCardNavigation(word) {
     if (!word) return;
 
-    // ✨ 核心修正：直接使用鎖定的單字，不要重新去計算！
     const btnPrev = document.getElementById('nav-btn-prev');
     const btnNext = document.getElementById('nav-btn-next');
     
@@ -3446,7 +3308,6 @@ function updateCardNavigation(word) {
         if(tooltipNext) tooltipNext.innerText = lockedNextWord ? lockedNextWord : 'End';
     }
 
-    // 同步更新手機版的按鈕
     const mobileNavContainer = document.getElementById('mobile-nav-container');
     if (mobileNavContainer) {
         mobileNavContainer.innerHTML = `
@@ -3473,10 +3334,8 @@ function initSearchSuggestions() {
     const input = document.getElementById('wordInput');
     if (!input) return;
 
-    // 確保輸入框的外層容器具備 relative 定位，這樣絕對定位的選單才會完美貼齊並同寬
     input.parentElement.style.position = 'relative';
 
-    // 建立選單 DOM 容器
     let suggestionBox = document.createElement('div');
     suggestionBox.id = 'search-suggestions';
     suggestionBox.className = 'search-suggestions';
@@ -3484,7 +3343,6 @@ function initSearchSuggestions() {
 
     let currentFocus = -1;
 
-    // 1. 監聽輸入框的文字變化
     input.addEventListener('input', function() {
         const rawVal = this.value.trim().toLowerCase();
         suggestionBox.innerHTML = '';
@@ -3495,28 +3353,21 @@ function initSearchSuggestions() {
             return;
         }
 
-        // ✨ 1. 判斷是否為「字尾搜尋」(檢查開頭是否為減號)
         const isSuffixSearch = rawVal.startsWith('-');
-        // 取得實際要搜尋的字串 (去掉減號)
-        // ✨ 1. 取得實際要搜尋的字串 (去掉減號)，並產生一個「無空格版」用來比對
         const val = isSuffixSearch ? rawVal.substring(1) : rawVal;
         const valNoSpace = val.replace(/\s+/g, '');
 
-        // 防呆：如果只有減號或全部都是空白，就不觸發
         if (isSuffixSearch && !valNoSpace) {
             suggestionBox.style.display = 'none';
             return;
         }
 
-        // ✨ 2. 根據搜尋模式，比對雙方的「無空格版本」
-        // ✨ 2. 根據搜尋模式，比對雙方的「無空格版本」
         const matches = historyData.filter(item => {
-            const wNoSpace = item.word.toLowerCase().replace(/\s+/g, '');
+            const wNoSpace = (item.word || '').toLowerCase().replace(/\s+/g, '');
             return isSuffixSearch ? wNoSpace.endsWith(valNoSpace) : wNoSpace.startsWith(valNoSpace);
         });
 
-        // 🚀 新增：強制將過濾出來的推薦名單依照字母 A-Z 排序！
-        matches.sort((a, b) => a.word.localeCompare(b.word));
+        matches.sort((a, b) => (a.word || '').localeCompare(b.word || ''));
 
         if (matches.length === 0) {
             suggestionBox.style.display = 'none';
@@ -3525,29 +3376,26 @@ function initSearchSuggestions() {
 
         suggestionBox.style.display = 'block';
 
-        // 渲染選單項目
         matches.forEach(match => {
             const div = document.createElement('div');
             div.className = 'suggestion-item';
             
-            // ✨ 3. 動態計算在「包含空格的原字串」中，真實要被高亮切斷的位置
             let splitIndex = 0;
             let nonSpaceCount = 0;
+            const wordStr = match.word || '';
             
             if (isSuffixSearch) {
-                // 字尾搜尋：從後面數回來
-                splitIndex = match.word.length;
-                for (let i = match.word.length - 1; i >= 0; i--) {
-                    if (match.word[i] !== ' ') nonSpaceCount++;
+                splitIndex = wordStr.length;
+                for (let i = wordStr.length - 1; i >= 0; i--) {
+                    if (wordStr[i] !== ' ') nonSpaceCount++;
                     if (nonSpaceCount === valNoSpace.length) {
                         splitIndex = i;
                         break;
                     }
                 }
             } else {
-                // 字首搜尋：從前面數過去
-                for (let i = 0; i < match.word.length; i++) {
-                    if (match.word[i] !== ' ') nonSpaceCount++;
+                for (let i = 0; i < wordStr.length; i++) {
+                    if (wordStr[i] !== ' ') nonSpaceCount++;
                     if (nonSpaceCount === valNoSpace.length) {
                         splitIndex = i + 1;
                         break;
@@ -3555,54 +3403,46 @@ function initSearchSuggestions() {
                 }
             }
 
-            // 根據剛剛算出來的真實切點 (splitIndex) 來組合 HTML
             let wordHtml = '';
             if (isSuffixSearch) {
-                const restPart = match.word.substring(0, splitIndex);
-                const matchPart = match.word.substring(splitIndex);
+                const restPart = wordStr.substring(0, splitIndex);
+                const matchPart = wordStr.substring(splitIndex);
                 wordHtml = `${restPart}<span class="suggestion-match">${matchPart}</span>`;
             } else {
-                const matchPart = match.word.substring(0, splitIndex);
-                const restPart = match.word.substring(splitIndex);
+                const matchPart = wordStr.substring(0, splitIndex);
+                const restPart = wordStr.substring(splitIndex);
                 wordHtml = `<span class="suggestion-match">${matchPart}</span>${restPart}`;
             }
             
-            // ✨ 完美移植單字卡的「翻譯 + 詞性」解析邏輯 (保持原樣不動)
             const rawTrans = match.translation || '';
             const rawPos = match.part_of_speech || '';
             const transParts = rawTrans.split('/');
             const posParts = rawPos.split('/');
             const maxLen = Math.max(transParts.length, posParts.length);
             
-            // 先把所有的翻譯與 Level 收集到這個變數裡
             let translationsHtml = '';
 
             for (let i = 0; i < maxLen; i++) {
                 const t = (transParts[i] || '').trim();
                 const p = (posParts[i] || '').trim();
                 if (t || p) {
-                    // 加入自動縮寫轉換
                     const displayPos = POS_ABBR_MAP[p.toLowerCase()] || p;
                     
                     const posHtml = displayPos ? `<span class="pos-tag" style="font-size: 0.65rem; margin-right: 0;">${displayPos}</span>` : '';
                     const transHtml = t ? `<span class="trans-text" style="font-size: 0.85rem; color: var(--text-muted);">${t}</span>` : '';
                     
-                    // ✨ 關鍵修正 1：加上 display: inline-block 與 vertical-align: middle
                     let levelHtml = '';
                     if (i === 0) {
                         const hasLevel = match.stats && match.stats.level !== undefined && match.stats.level !== null;
                         const hasTag = match.exam_tag && match.exam_tag !== 'Level';
 
                         if (hasLevel) {
-                            // 1. 如果有 Level，優先顯示 Level (維持原樣)
                             levelHtml = `<span class="sidebar-level-tag" data-lvl="${match.stats.level}" style="font-size: 0.6rem; padding: 3px 4px; margin-right: 8px; border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; line-height: 1; transform: translateY(-2px);">LV.${match.stats.level}</span>`;
                         } else if (hasTag) {
-                            // 2. 如果沒有 Level 但有其他分類標籤，則顯示該分類標籤
                             levelHtml = `<span class="sidebar-level-tag" data-tag="${match.exam_tag}" style="font-size: 0.6rem; padding: 3px 4px; margin-right: 8px; border-radius: 3px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; line-height: 1; transform: translateY(-2px);">${match.exam_tag}</span>`;
                         }
                     }
 
-                    // ✨ 關鍵修正 2：將 levelHtml 移出 trans-segment 之外，並幫 trans-segment 也加上 vertical-align: middle
                     translationsHtml += `
                         ${levelHtml}
                         <span class="trans-segment" style="margin-bottom: 0; margin-right: 3px; display: inline-flex; align-items: center; gap: 0;">
@@ -3611,7 +3451,6 @@ function initSearchSuggestions() {
                 }
             }
 
-            // ✨ 完美隔離：[負責換行的文字容器] + [負責固定的圓點容器]
             const status = (match.stats && match.stats.status) ? match.stats.status : 'new';
             
             let segmentsHtml = `
@@ -3628,12 +3467,8 @@ function initSearchSuggestions() {
                 </div>
             `;
 
-            // 將「單字」與「翻譯區塊」左右排開，套用動態高亮的 wordHtml
-            // ✨ 1. 將單字進行跳脫處理 (Escape)，避免單引號 (如 won't) 破壞 HTML 語法
-            const safeWord = match.word.replace(/'/g, "\\'");
+            const safeWord = wordStr.replace(/'/g, "\\'");
 
-            // ✨ 2. 將「單字」與「翻譯區塊」左右排開，並套用動態高亮的 wordHtml，旁邊加入發音按鈕
-            // 將「單字」與「翻譯區塊」左右排開，並套用動態高亮的 wordHtml，旁邊加入發音按鈕
             div.innerHTML = `
                 <div class="sugg-word" style="display: flex; align-items: center;">
                     <span style="white-space: pre-wrap;">${wordHtml}</span>
@@ -3650,19 +3485,17 @@ function initSearchSuggestions() {
                 <div class="sugg-trans-container">${segmentsHtml}</div>
             `;
 
-            // 點擊選項時的動作
             div.addEventListener('click', function() {
-                suggestionBox.style.display = 'none';   // 1. 隱藏選單
-                input.value = '';                       // 2. 直接清空輸入框
-                input.blur();                           // 3. 取消焦點
-                startLookup(match.word);                // 4. 觸發搜尋
+                suggestionBox.style.display = 'none';   
+                input.value = '';                       
+                input.blur();                           
+                startLookup(match.word);                
             });
 
             suggestionBox.appendChild(div);
         });
     });
 
-    // 2. 支援鍵盤 (上下方向鍵選擇、Enter 送出)
     input.addEventListener('keydown', function(e) {
         let items = suggestionBox.getElementsByClassName('suggestion-item');
         if (suggestionBox.style.display === 'none' || items.length === 0) return;
@@ -3674,9 +3507,8 @@ function initSearchSuggestions() {
             currentFocus--;
             addActive(items);
         } else if (e.key === 'Enter') {
-            // 如果已經用上下鍵「選中」了推薦項目，按 Enter 就執行點擊
             if (currentFocus > -1) {
-                e.preventDefault(); // 阻止原本的搜尋送出
+                e.preventDefault(); 
                 items[currentFocus].click();
             }
         }
@@ -3689,7 +3521,6 @@ function initSearchSuggestions() {
         if (currentFocus < 0) currentFocus = (items.length - 1);
         items[currentFocus].classList.add('active');
         
-        // 確保選項被鍵盤選中時，滾動條會跟著移動到該選項
         items[currentFocus].scrollIntoView({ block: 'nearest' }); 
     }
 
@@ -3699,8 +3530,6 @@ function initSearchSuggestions() {
         }
     }
 
-    // ✨ 3. 攔截 mousedown 事件，防止點擊時輸入框失去焦點
-    // (這招比 hover 更穩，而且完美解決手機觸控會提早 blur 的問題)
     suggestionBox.addEventListener('mousedown', (e) => {
         e.preventDefault(); 
     });
@@ -3712,14 +3541,12 @@ function initSearchSuggestions() {
         });
     }
 
-    // ✨ 4. 當輸入框真正失去焦點 (blur) 時 (代表點擊了畫面其他空白處)
     input.addEventListener('blur', function() {
-        input.value = '';                     // 清空輸入框的字
-        suggestionBox.innerHTML = '';         // 清空推薦選單
-        suggestionBox.style.display = 'none'; // 隱藏選單
+        input.value = '';                     
+        suggestionBox.innerHTML = '';         
+        suggestionBox.style.display = 'none'; 
     });
     
-    // 5. 輸入框重新獲得焦點時，如果有值且有推薦結果，就重新顯示
     input.addEventListener('focus', function() {
         if (this.value.trim() !== '' && suggestionBox.innerHTML !== '') {
             suggestionBox.style.display = 'block';
@@ -3730,24 +3557,19 @@ function initSearchSuggestions() {
 // =========================================
 // ✨ 新增：Level 鎖定 (定型) 功能
 // =========================================
-// =========================================
-// ✨ 新增：Level 鎖定 (定型) 功能 (加入解鎖確認彈窗)
-// =========================================
 function toggleLevelLock(event, level) {
-    event.stopPropagation(); // 阻止觸發卡片過濾
+    event.stopPropagation(); 
     
     if (!appSettings.lockedLevels) appSettings.lockedLevels = [];
     
     const idx = appSettings.lockedLevels.indexOf(level);
 
-    // 把更新畫面與儲存的動作獨立成一個小函式，方便重複呼叫
     const executeLockUpdate = () => {
         localStorage.setItem('appSettings', JSON.stringify(appSettings));
         saveLocksToDB();
         
-        renderDashboard(); // 重新渲染儀表板的鎖頭狀態
+        renderDashboard(); 
         
-        // 如果目前有打開單字卡，也要即時更新按鈕的禁用狀態
         if (currentViewedWord) {
             const item = wordDetailsCache[currentViewedWord] || historyData.find(i => i.word === currentViewedWord);
             if (item) renderCard(item, true); 
@@ -3756,21 +3578,18 @@ function toggleLevelLock(event, level) {
     };
 
     if (idx > -1) {
-        // ✨ 目前是鎖定狀態，準備解鎖 -> 呼叫確認彈窗
-        // 判斷 level 是數字還是字串(如 TOEIC)，讓彈窗文字更友善
         const levelName = typeof level === 'number' ? `Level ${level}` : level;
         
         showConfirmModal(
             'Unlock Category', 
             `Are you sure you want to unlock "<strong>${levelName}</strong>"?`, 
             () => {
-                appSettings.lockedLevels.splice(idx, 1); // 使用者點擊確認後才解鎖
+                appSettings.lockedLevels.splice(idx, 1); 
                 executeLockUpdate();
             }, 
-            false // 不使用紅色危險按鈕
+            false 
         );
     } else {
-        // 目前是解鎖狀態，準備上鎖 -> 直接執行，不囉嗦
         appSettings.lockedLevels.push(level);    
         executeLockUpdate();
     }
@@ -3783,7 +3602,6 @@ function updateSelectLockUI() {
     const lockBtn = document.getElementById('currentSelectLockBtn');
     if (!lockBtn) return;
 
-    // 排除不需要鎖頭的類別
     const excludeFilters = ['all', 'new', 'learning', 'mastered', 'lvl-unset'];
     if (excludeFilters.includes(currentFilterValue)) {
         lockBtn.style.display = 'none';
@@ -3793,7 +3611,6 @@ function updateSelectLockUI() {
     lockBtn.style.display = 'flex';
     let lockTarget = null;
     
-    // 解析目前選擇的是哪個 Level 數字 或是哪個 Tag 字串
     if (currentFilterValue.startsWith('lvl-')) {
         lockTarget = parseInt(currentFilterValue.replace('lvl-', ''));
     } else if (currentFilterValue.startsWith('exam-')) {
@@ -3813,7 +3630,7 @@ function updateSelectLockUI() {
 }
 
 function toggleCurrentFilterLock(event) {
-    event.stopPropagation(); // 阻止下拉選單被點開
+    event.stopPropagation(); 
     
     let lockTarget = null;
     if (currentFilterValue.startsWith('lvl-')) {
@@ -3823,7 +3640,7 @@ function toggleCurrentFilterLock(event) {
     }
     
     if (lockTarget !== null) {
-        toggleLevelLock(event, lockTarget); // 沿用並觸發原本的鎖定邏輯
+        toggleLevelLock(event, lockTarget); 
     }
 }
 
@@ -3831,38 +3648,34 @@ function toggleCurrentFilterLock(event) {
 // ✨ 新增：清除所有單字卡的瀏覽次數 (Views)
 // =========================================
 function confirmResetViews() {
-    closeSettingsModal(); // 點擊後先關閉設定面板
+    closeSettingsModal(); 
     
     showConfirmModal(
         'Clear All Views',
         'Are you sure you want to reset the view counts (vw) for all words to 0?<br>This action cannot be undone.',
         async () => {
-            // 1. 樂觀更新前端歷史資料
             historyData.forEach(item => {
                 if (item.stats) item.stats.views = 0;
             });
             
-            // 2. 更新詳細資料快取
             for (let word in wordDetailsCache) {
                 if (wordDetailsCache[word].stats) {
                     wordDetailsCache[word].stats.views = 0;
                 }
             }
 
-            // 3. 如果目前正好有打開的單字卡，立刻更新畫面右上角的數字
             if (currentViewedWord) {
                 const viewDisplay = document.getElementById('viewDisplay');
                 if (viewDisplay) viewDisplay.innerText = '0 vw';
             }
 
-            // 4. 呼叫後端 API 進行批次更新 
             try {
                 await gasFetch('resetViews');
             } catch (e) {
                 console.error("Reset views failed", e);
             }
         },
-        true // isDanger = true，這樣彈窗的按鈕會變成紅色的
+        true 
     );
 }
 
@@ -3870,10 +3683,8 @@ function confirmResetViews() {
 // ✨ 點擊眼睛：切換例句中文顯示
 // =========================================
 function toggleZhVisibility(btnElement) {
-    // 找到包覆這對「眼睛與中文」的父容器 .zh-row
     const row = btnElement.closest('.zh-row');
     if (row) {
-        // 切換顯示狀態
         row.classList.toggle('show-zh');
     }
 }
@@ -3886,7 +3697,6 @@ function recalculateNavigationLock() {
     const currentIndex = filteredData.findIndex(item => item.word === currentViewedWord);
     
     if (currentIndex !== -1) {
-        // 根據新的全域排序，重新綁定鄰居
         lockedPrevWord = currentIndex > 0 ? filteredData[currentIndex - 1].word : null;
         lockedNextWord = currentIndex < filteredData.length - 1 ? filteredData[currentIndex + 1].word : null;
         
@@ -3897,7 +3707,6 @@ function recalculateNavigationLock() {
             displayTotal = historyData.length;
         }
         
-        // 重新綁定當前序號
         lockedDisplayIndex = displayIdx + 1;
         lockedDisplayTotal = displayTotal;
     }
